@@ -39,6 +39,12 @@ interface QuoteMatch {
   actual: string
 }
 
+function lineRangeForMatch(content: string, match: QuoteMatch): { startLine: number; endLine: number } {
+  const startLine = content.slice(0, match.index).split('\n').length
+  const endLine = startLine + match.actual.split('\n').length - 1
+  return { startLine, endLine }
+}
+
 function findQuoteMatches(content: string, search: string): QuoteMatch[] {
   const matches: QuoteMatch[] = []
   const normalizedSearch = normalizeQuotes(search)
@@ -69,8 +75,8 @@ function replaceText(
   oldString: string,
   newString: string,
   replaceAll: boolean,
+  matches = findQuoteMatches(content, oldString),
 ): { content: string; actual: string; count: number } {
-  const matches = findQuoteMatches(content, oldString)
   if (matches.length === 0) throw new Error('old_string not found in file')
   if (matches.length > 1 && !replaceAll) {
     throw new Error(`Found ${matches.length} matches of old_string. Provide more surrounding context or set replace_all to true.`)
@@ -136,21 +142,37 @@ export async function executeEdit(input: EditInput): Promise<ToolResponse> {
     }
   }
 
-  const readSnapshot = readRegistry.get(context.absolutePath)
-  if (!readSnapshot) throw new Error('File has not been read. Read it before attempting to edit it.')
   const current = await readDecodedFile(context)
-  if (current.hash !== readSnapshot.hash || current.mtimeMs !== readSnapshot.mtimeMs) {
-    if (current.text !== readSnapshot.text) {
-      throw new Error('File has been unexpectedly modified. Read it again before attempting to write it.')
-    }
-  }
   if (input.old_string === '' && current.text.trim().length > 0) {
     throw new Error('Cannot use an empty old_string to overwrite a non-empty file')
+  }
+  const matches = input.old_string === '' ? [] : findQuoteMatches(current.text, input.old_string)
+  if (input.old_string !== '' && matches.length === 0) throw new Error('old_string not found in file')
+  if (matches.length > 1 && !(input.replace_all ?? false)) {
+    throw new Error(`Found ${matches.length} matches of old_string. Provide more surrounding context or set replace_all to true.`)
+  }
+  const selectedMatches = input.replace_all ? matches : matches.slice(0, 1)
+  const authorization = readRegistry.authorizeEdit(
+    context.absolutePath,
+    current.hash,
+    selectedMatches.map(match => lineRangeForMatch(current.text, match)),
+  )
+  if (authorization.status === 'unread') {
+    throw new Error('File has not been read. Read the target lines before attempting to edit them.')
+  }
+  if (authorization.status === 'changed') {
+    throw new Error('File has been unexpectedly modified. Read the target lines again before attempting to write it.')
+  }
+  if (authorization.status === 'uncovered') {
+    const ranges = authorization.missing
+      .map(range => range.startLine === range.endLine ? String(range.startLine) : `${range.startLine}-${range.endLine}`)
+      .join(', ')
+    throw new Error(`The target text has not been read. Read line range(s) ${ranges} before attempting this edit.`)
   }
 
   const result = input.old_string === ''
     ? { content: input.new_string, actual: '', count: 1 }
-    : replaceText(current.text, input.old_string, input.new_string, input.replace_all ?? false)
+    : replaceText(current.text, input.old_string, input.new_string, input.replace_all ?? false, matches)
   const buffer = encodeSnapshotText(current, result.content)
   await atomicWriteBuffer(context.root, context.absolutePath, buffer, {
     expected: { mtimeMs: current.mtimeMs, hash: current.hash },

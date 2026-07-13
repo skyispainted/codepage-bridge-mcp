@@ -266,7 +266,10 @@ Each candidate file is decoded using its own nearest `.encoding-rules`. Explicit
 ```
 
 - Existing files require a complete prior `Read`.
-- Partial reads do not authorize edits.
+- A partial read authorizes an edit when every line covered by the selected old_string match was actually returned to the model.
+- The rest of a large file does not need to be read when the target string is unique and fully contained in displayed lines.
+- With eplace_all: true, every matching range must have been read.
+- If a target was not read, the error reports the exact line range to request.
 - The file is re-read and hashed immediately before writing.
 - Multiple matches are rejected unless `replace_all` is true.
 - Straight/curly quote compatibility follows Claude Code edit behavior.

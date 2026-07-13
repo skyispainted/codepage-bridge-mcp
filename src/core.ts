@@ -166,6 +166,24 @@ export class ReadRegistry {
     })
   }
 
+  authorizeEdit(
+    filePath: string,
+    currentHash: string,
+    requiredRanges: Array<{ startLine: number; endLine: number }>,
+  ):
+    | { status: 'authorized'; snapshot: ReadSnapshot }
+    | { status: 'unread' }
+    | { status: 'changed' }
+    | { status: 'uncovered'; missing: Array<{ startLine: number; endLine: number }> } {
+    const entry = this.coverage.get(path.resolve(filePath))
+    if (!entry) return { status: 'unread' }
+    if (entry.snapshot.hash !== currentHash) return { status: 'changed' }
+    const missing = requiredRanges.filter(required => !entry.intervals.some(
+      interval => interval.start <= required.startLine && interval.end >= required.endLine,
+    ))
+    if (missing.length > 0) return { status: 'uncovered', missing }
+    return { status: 'authorized', snapshot: entry.snapshot }
+  }
   async isUnchanged(filePath: string, offset?: number, limit?: number): Promise<boolean> {
     const absolutePath = path.resolve(filePath)
     const previous = this.ranges.get(absolutePath)

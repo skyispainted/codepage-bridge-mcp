@@ -53,6 +53,36 @@ describe('encoding-transparent text tools', () => {
     expect(iconv.decode(await readFile(file), 'gbk')).toBe('新文件')
   })
 
+  it('allows a large-file edit after reading only the target line', async () => {
+    const root = await project()
+    const file = path.join(root, 'target-only.txt')
+    const lines = Array.from({ length: 1000 }, (_, index) => index === 749 ? 'UNIQUE_TARGET' : `line-${index + 1}`)
+    await writeFile(file, iconv.encode(lines.join('\n'), 'gbk'))
+    await executeRead({ file_path: file, offset: 750, limit: 1 })
+    await executeEdit({ file_path: file, old_string: 'UNIQUE_TARGET', new_string: 'UPDATED_TARGET' })
+    expect(iconv.decode(await readFile(file), 'gbk')).toContain('UPDATED_TARGET')
+  })
+
+  it('rejects a large-file edit when the target line was not displayed', async () => {
+    const root = await project()
+    const file = path.join(root, 'unread-target.txt')
+    await writeFile(file, iconv.encode('one\ntwo\nTARGET\nfour', 'gbk'))
+    await executeRead({ file_path: file, offset: 1, limit: 2 })
+    await expect(executeEdit({ file_path: file, old_string: 'TARGET', new_string: 'updated' }))
+      .rejects.toThrow(/Read line range\(s\) 3/)
+  })
+
+  it('requires every replace-all target range to be read', async () => {
+    const root = await project()
+    const file = path.join(root, 'replace-all-ranges.txt')
+    await writeFile(file, iconv.encode('MARK\nother\nMARK', 'gbk'))
+    await executeRead({ file_path: file, offset: 1, limit: 1 })
+    await expect(executeEdit({ file_path: file, old_string: 'MARK', new_string: 'DONE', replace_all: true }))
+      .rejects.toThrow(/Read line range\(s\) 3/)
+    await executeRead({ file_path: file, offset: 3, limit: 1 })
+    await executeEdit({ file_path: file, old_string: 'MARK', new_string: 'DONE', replace_all: true })
+    expect(iconv.decode(await readFile(file), 'gbk')).toBe('DONE\nother\nDONE')
+  })
   it('allows editing after sequential ranges cover the complete file', async () => {
     const root = await project()
     const file = path.join(root, 'segmented.txt')
@@ -60,7 +90,7 @@ describe('encoding-transparent text tools', () => {
     await executeRead({ file_path: file, offset: 1, limit: 2 })
     await executeRead({ file_path: file, offset: 3, limit: 2 })
     await expect(executeEdit({ file_path: file, old_string: 'line5', new_string: 'updated' }))
-      .rejects.toThrow(/has not been read/)
+      .rejects.toThrow(/Read line range\(s\) 5/)
     await executeRead({ file_path: file, offset: 5, limit: 2 })
     await executeEdit({ file_path: file, old_string: 'line5', new_string: 'updated' })
     expect(iconv.decode(await readFile(file), 'gbk')).toContain('updated')
@@ -98,16 +128,16 @@ describe('encoding-transparent text tools', () => {
     await writeFile(file, iconv.encode('x\ny\nz\nw', 'gbk'))
     fileStateCache.clear()
     await executeRead({ file_path: file, offset: 3, limit: 2 })
-    await expect(executeEdit({ file_path: file, old_string: 'w', new_string: 'W' }))
-      .rejects.toThrow(/has not been read/)
+    await expect(executeEdit({ file_path: file, old_string: 'x', new_string: 'X' }))
+      .rejects.toThrow(/Read line range\(s\) 1/)
   })
-  it('rejects edits after a partial read', async () => {
+  it('allows editing a target that was included in a partial read', async () => {
     const root = await project()
     const file = path.join(root, 'partial.txt')
     await writeFile(file, iconv.encode('第一行\n第二行\n第三行', 'gbk'))
     await executeRead({ file_path: file, offset: 2, limit: 1 })
-    await expect(executeEdit({ file_path: file, old_string: '第二行', new_string: '修改' }))
-      .rejects.toThrow(/has not been read/)
+    await executeEdit({ file_path: file, old_string: '第二行', new_string: '修改' })
+    expect(iconv.decode(await readFile(file), 'gbk')).toContain('修改')
   })
 
   it('rejects stale writes after an external modification', async () => {
