@@ -221,7 +221,9 @@ windows-1252
 
 - Text is decoded according to `.encoding-rules` and returned as Unicode.
 - Output uses numbered lines compatible with Claude Code workflows.
-- Files larger than 256 KiB require `offset` and `limit`.
+- Files larger than 256 KiB require offset and limit.
+- Multiple ranged reads of the same unchanged file are merged by line coverage; once all lines have been returned, Edit and Write are authorized.
+- Ranges may be sequential, overlapping, out of order, or concurrently requested within the same MCP process. A file hash change invalidates accumulated coverage.
 - Supports PNG, JPEG, GIF, WebP, PDF pages, and Notebook cells.
 - Notebook reads do not accept text-line `offset` or `limit`.
 

@@ -53,6 +53,54 @@ describe('encoding-transparent text tools', () => {
     expect(iconv.decode(await readFile(file), 'gbk')).toBe('新文件')
   })
 
+  it('allows editing after sequential ranges cover the complete file', async () => {
+    const root = await project()
+    const file = path.join(root, 'segmented.txt')
+    await writeFile(file, iconv.encode('line1\nline2\nline3\nline4\nline5', 'gbk'))
+    await executeRead({ file_path: file, offset: 1, limit: 2 })
+    await executeRead({ file_path: file, offset: 3, limit: 2 })
+    await expect(executeEdit({ file_path: file, old_string: 'line5', new_string: 'updated' }))
+      .rejects.toThrow(/has not been read/)
+    await executeRead({ file_path: file, offset: 5, limit: 2 })
+    await executeEdit({ file_path: file, old_string: 'line5', new_string: 'updated' })
+    expect(iconv.decode(await readFile(file), 'gbk')).toContain('updated')
+  })
+
+  it('merges out-of-order and overlapping read ranges', async () => {
+    const root = await project()
+    const file = path.join(root, 'ranges.txt')
+    await writeFile(file, iconv.encode('one\ntwo\nthree\nfour\nfive\nsix', 'gbk'))
+    await executeRead({ file_path: file, offset: 5, limit: 2 })
+    await executeRead({ file_path: file, offset: 2, limit: 4 })
+    await executeRead({ file_path: file, offset: 1, limit: 1 })
+    await executeEdit({ file_path: file, old_string: 'six', new_string: 'SIX' })
+    expect(iconv.decode(await readFile(file), 'gbk')).toContain('SIX')
+  })
+
+  it('merges concurrently completed read ranges in the shared registry', async () => {
+    const root = await project()
+    const file = path.join(root, 'parallel.txt')
+    await writeFile(file, iconv.encode('a\nb\nc\nd\ne\nf', 'gbk'))
+    await Promise.all([
+      executeRead({ file_path: file, offset: 1, limit: 2 }),
+      executeRead({ file_path: file, offset: 3, limit: 2 }),
+      executeRead({ file_path: file, offset: 5, limit: 2 }),
+    ])
+    await executeEdit({ file_path: file, old_string: 'f', new_string: 'F' })
+    expect(iconv.decode(await readFile(file), 'gbk')).toContain('F')
+  })
+
+  it('invalidates accumulated ranges when the file version changes', async () => {
+    const root = await project()
+    const file = path.join(root, 'versioned-ranges.txt')
+    await writeFile(file, iconv.encode('a\nb\nc\nd', 'gbk'))
+    await executeRead({ file_path: file, offset: 1, limit: 2 })
+    await writeFile(file, iconv.encode('x\ny\nz\nw', 'gbk'))
+    fileStateCache.clear()
+    await executeRead({ file_path: file, offset: 3, limit: 2 })
+    await expect(executeEdit({ file_path: file, old_string: 'w', new_string: 'W' }))
+      .rejects.toThrow(/has not been read/)
+  })
   it('rejects edits after a partial read', async () => {
     const root = await project()
     const file = path.join(root, 'partial.txt')

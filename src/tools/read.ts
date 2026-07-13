@@ -111,16 +111,15 @@ export async function executeRead(input: ReadInput): Promise<ToolResponse> {
   const startIndex = offset - 1
   const endIndex = input.limit === undefined ? lines.length : startIndex + input.limit
   const selected = lines.slice(startIndex, endIndex)
-  const complete = startIndex === 0 && endIndex >= lines.length
   const remembered = {
     ...snapshot,
-    complete,
+    complete: false,
     ...(input.offset === undefined ? {} : { offset: input.offset }),
     ...(input.limit === undefined ? {} : { limit: input.limit }),
   }
-  readRegistry.remember(remembered)
 
   if (snapshot.text.length === 0) {
+    readRegistry.remember(remembered, { startLine: 1, endLine: 1, totalLines: 1 })
     return { content: [{ type: 'text', text: '<system-reminder>Warning: the file exists but has empty contents.</system-reminder>' }] }
   }
   if (startIndex >= lines.length) {
@@ -131,6 +130,11 @@ export async function executeRead(input: ReadInput): Promise<ToolResponse> {
       }],
     }
   }
+  readRegistry.remember(remembered, {
+    startLine: offset,
+    endLine: offset + selected.length - 1,
+    totalLines: lines.length,
+  })
   if (extension === '.ipynb') {
     return { content: notebookContent(snapshot.text) }
   }
