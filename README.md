@@ -10,11 +10,36 @@ It is designed for legacy codebases that still use GBK/GB2312/GB18030, Big5, Shi
 
 ## Quick Start
 
-You have two installation paths:
+You have three installation paths:
 
-### Option A — Install from GitHub Release (recommended for normal users)
+### Option A — Install from Marketplace (coming soon)
 
-This path does **not** require local `npm install` or local `npm run build`.
+This will become the easiest path for ordinary users.
+
+Planned goal:
+
+- one-click install from marketplace;
+- automatic MCP registration;
+- no local `git clone`;
+- no local `npm install`;
+- minimal manual setup after install.
+
+For now, use **GitHub Release installation** below.
+
+### Option B — Install from GitHub Release (recommended for normal users)
+
+This is the current recommended installation path.
+
+It does **not** require:
+
+- local `git clone`
+- local `npm install`
+- local `npm run build`
+
+It still requires local:
+
+- `claude`
+- `node`
 
 #### Windows
 
@@ -28,25 +53,22 @@ powershell -ExecutionPolicy Bypass -File .\install\install-from-release-windows.
 bash ./install/install-from-release-unix.sh
 ```
 
-This still requires local:
+### Option C — Install from source (for contributors and local development)
 
-- `claude`
-- `node`
+Use this path only if you want to:
 
-But it does **not** require cloning the repository or running local npm dependency installation.
+- develop Codepage Bridge itself;
+- inspect or modify the implementation;
+- debug installation issues locally.
 
-### Option B — Install from source (recommended for contributors)
+Typical flow:
 
-1. Install Node.js 20 or newer.
-2. Clone this repository.
-3. Run `npm install` and `npm run build`, or use the source installer.
-4. Register the MCP in Claude Code.
-5. Add a project `.encoding-rules` file.
-6. Disable Claude Code built-in `Read`, `Grep`, `Edit`, `Write`, and `NotebookEdit`.
-7. Add a `CLAUDE.md` policy telling the model to use Codepage Bridge for file access.
-8. Verify the model is actually calling `mcp__codepage-bridge__Read` and `mcp__codepage-bridge__Grep`.
+1. clone the repository;
+2. run `npm install`;
+3. run `npm run build`;
+4. register the MCP manually or via the source installer.
 
-If you skip steps 6 and 7, Claude Code may continue using its built-in file tools and bypass `.encoding-rules`.
+If you skip the built-in tool blocking and `CLAUDE.md` policy steps, Claude Code may continue using its built-in file tools and bypass `.encoding-rules`.
 
 ---
 
@@ -103,7 +125,7 @@ It does **not** require:
 
 ## Install from source
 
-Use this path if you want to develop, modify, or inspect the project locally.
+Use this path only for contributors, local debugging, or development.
 
 ### 1. Clone the repository
 
