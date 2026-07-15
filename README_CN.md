@@ -526,6 +526,16 @@ claude mcp get codepage-bridge
 
 ---
 
+## NPM_TOKEN 自动发布说明
+
+GitHub Release workflow 现在会在打包 release 资产之前，先自动发布 npm 包。
+
+仓库维护者必须在 GitHub Secrets 中配置：
+
+- NPM_TOKEN`r
+
+重要：如果某个 npm token 曾经被贴到聊天、终端截图、日志或其他公开位置，请立即在 npm 后台撤销并重新生成新的发布 token，再写入 GitHub Secrets。
+
 ## 维护者发布流程
 
 发布新版本：
@@ -535,7 +545,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-GitHub Release workflow 会自动：
+GitHub Release workflow 会自动：`r`n`r`n- 使用 `NPM_TOKEN` 自动发布 npm 包；
 
 - 执行类型检查；
 - 执行完整测试；

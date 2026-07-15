@@ -15,7 +15,54 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  publish-npm:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag format
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$RELEASE_TAG" in
+            v*) ;;
+            *) echo "Release tag must start with v" >&2; exit 1 ;;
+          esac
+
+      - name: Setup Node.js for npm publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org/
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run check
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Dry-run package
+        run: npm pack --dry-run
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release-assets:
+    needs: publish-npm
     strategy:
       fail-fast: false
       matrix:
@@ -40,15 +87,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Validate tag format
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "$RELEASE_TAG" in
-            v*) ;;
-            *) echo "Release tag must start with v" >&2; exit 1 ;;
-          esac
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -86,6 +124,8 @@ jobs:
           cp README_CN.md "$OUT/"
           cp -R examples "$OUT/"
           cp -R install "$OUT/"
+          cp -R .claude-plugin "$OUT/"
+          cp .mcp.json "$OUT/"
 
       - name: Archive release (tar.gz)
         if: matrix.archive == 'tar.gz'
@@ -127,12 +167,16 @@ jobs:
           body: |
             ## Codepage Bridge MCP
 
+            npm package publication completed before these assets were built.
+
             Release assets include:
 
             - prebuilt `dist/`
             - production `node_modules/`
             - installer scripts in `install/`
             - configuration templates in `examples/`
+            - plugin manifests in `.claude-plugin/`
+            - plugin-local `.mcp.json`
             - `README.md` and `README_CN.md`
             - platform SHA256 files
 
@@ -174,6 +218,10 @@ jobs:
             bash ./install/install-from-source-unix.sh
             ```
 
+            ### npm publish note
+
+            This workflow uses the GitHub repository secret `NPM_TOKEN` to publish `codepage-bridge-mcp` before packaging release assets.
+
             ### Important
 
             After installing the MCP, you must still:
@@ -187,16 +235,16 @@ jobs:
             codepage-bridge-${{ env.RELEASE_TAG }}-${{ matrix.artifact }}.${{ matrix.archive }}.sha256
 
   checksums:
-    needs: release
+    needs: release-assets
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
     steps:
-      - name: Download current release assets
+      - name: Download current release checksum assets
         uses: robinraju/release-downloader@v1
         with:
           tag: ${{ env.RELEASE_TAG }}
-          fileName: 'codepage-bridge-${{ env.RELEASE_TAG }}-*.*sha256'
+          fileName: 'codepage-bridge-${{ env.RELEASE_TAG }}-*.sha256'
           out-file-path: assets
 
       - name: Build combined checksums file

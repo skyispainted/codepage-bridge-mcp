@@ -96,13 +96,13 @@ That means marketplace installation depends on the package name `codepage-bridge
 1. publish `codepage-bridge-mcp` to npm;
 2. keep `package.json`, `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json` versions in sync;
 3. add this repository to a Claude Code marketplace source;
-4. validate the plugin with:
+6. validate the plugin with:
 
 ```bash
 claude plugin validate . --strict
 ```
 
-5. install from marketplace and run `/setup`.
+7. install from marketplace and run `/setup`.
 
 ---
 
@@ -681,6 +681,16 @@ Use them as copy-paste starting points.
 
 ---
 
+## NPM_TOKEN automation note
+
+The GitHub release workflow now publishes the npm package automatically before packaging release assets.
+
+Repository maintainers must configure a GitHub Actions secret named NPM_TOKEN.
+
+Important: if a token was ever pasted into chat, terminal history, logs, or screenshots, revoke it in npm immediately and create a new publish token before storing it in GitHub Secrets.
+
+Use a token that can publish packages under your npm account or organization.
+
 ## Maintainer Release Flow
 
 To publish a new release:
@@ -690,7 +700,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The GitHub Release workflow will:
+The GitHub Release workflow will:`r`n`r`n- publish the npm package using `NPM_TOKEN`;
 
 - run type checks;
 - run the full test suite;
