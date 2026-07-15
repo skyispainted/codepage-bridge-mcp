@@ -1,6 +1,6 @@
 {
   "name": "codepage-bridge-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Encoding-transparent MCP file tools for legacy codepages in Claude Code",
   "license": "MIT",
   "type": "module",

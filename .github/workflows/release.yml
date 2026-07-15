@@ -7,12 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to package (for example v0.1.0)'
+        description: 'Release tag to package (for example v0.1.1)'
         required: true
         type: string
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   publish-npm:
@@ -21,7 +22,7 @@ jobs:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -35,7 +36,7 @@ jobs:
           esac
 
       - name: Setup Node.js for npm publish
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org/
@@ -57,9 +58,7 @@ jobs:
         run: npm pack --dry-run
 
       - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
 
   release-assets:
     needs: publish-npm
@@ -84,12 +83,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -220,7 +219,8 @@ jobs:
 
             ### npm publish note
 
-            This workflow uses the GitHub repository secret `NPM_TOKEN` to publish `codepage-bridge-mcp` before packaging release assets.
+            This workflow uses npm Trusted Publishing with GitHub OIDC.
+            No long-lived `NPM_TOKEN` is required for publishing.
 
             ### Important
 
