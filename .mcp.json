@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "codepage-bridge": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "codepage-bridge-mcp"
+      ]
+    }
+  }
+}

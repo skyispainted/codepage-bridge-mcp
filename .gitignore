@@ -2,5 +2,5 @@ node_modules/
 dist/
 coverage/
 *.tmp.*
-.mcp.json
 .claude/
+!.mcp.json
