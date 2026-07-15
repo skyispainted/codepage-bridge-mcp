@@ -30,28 +30,17 @@ For now, use **GitHub Release installation** below.
 
 This is the current recommended installation path.
 
-It does **not** require:
+You can choose one of two sub-paths:
 
-- local `git clone`
-- local `npm install`
-- local `npm run build`
+1. **You already downloaded and extracted the release package**
+2. **You want a script to download the release package for you**
 
-It still requires local:
+Both paths avoid local `npm install` and local `npm run build`.
+
+They still require local:
 
 - `claude`
 - `node`
-
-#### Windows
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install\install-from-release-windows.ps1
-```
-
-#### macOS / Linux
-
-```bash
-bash ./install/install-from-release-unix.sh
-```
 
 ### Option C — Install from source (for contributors and local development)
 
@@ -76,41 +65,84 @@ If you skip the built-in tool blocking and `CLAUDE.md` policy steps, Claude Code
 
 This is the easiest path for end users.
 
-The release installer scripts:
+There are **two valid ways** to use the Release installer flow.
 
-- download the latest prebuilt package for the current platform;
-- unpack it into a user directory;
-- register the Claude Code MCP server automatically.
+### Path 1 — You already downloaded and extracted a release package
 
-### Windows
+This is the preferred path if you are already inside an extracted release directory.
+
+Use:
+
+#### Windows
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install\install-from-release-windows.ps1
+powershell -ExecutionPolicy Bypass -File .\install\install-this-release-windows.ps1
 ```
 
-### macOS / Linux
+#### macOS / Linux
 
 ```bash
-bash ./install/install-from-release-unix.sh
+bash ./install/install-this-release-unix.sh
 ```
+
+What it does:
+
+- checks that the current extracted package contains `dist/src/server.js`;
+- registers Claude Code MCP using that local package;
+- does **not** download anything.
+
+### Path 2 — You want the installer to download the release package for you
+
+Use:
+
+#### Windows
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install\download-release-windows.ps1
+```
+
+#### macOS / Linux
+
+```bash
+bash ./install/download-release-unix.sh
+```
+
+What it does:
+
+- fetches the latest release from GitHub;
+- downloads the correct platform archive;
+- extracts it under the user install directory;
+- registers Claude Code MCP.
 
 You can also install a specific version.
 
 #### Windows
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install\install-from-release-windows.ps1 -Version v0.1.0
+powershell -ExecutionPolicy Bypass -File .\install\download-release-windows.ps1 -Version v0.1.0
 ```
 
 #### macOS / Linux
 
 ```bash
-bash ./install/install-from-release-unix.sh v0.1.0
+bash ./install/download-release-unix.sh v0.1.0
 ```
 
-### What this path still requires
+### Compatibility wrappers
 
-The release installer still expects these commands to already exist locally:
+The old `install-from-release-*` scripts are kept as compatibility wrappers:
+
+- if run inside an extracted release package, they install from local files;
+- otherwise they fall back to downloading the release package.
+
+These are still valid, but the clearer scripts are:
+
+- `install-this-release-*`
+- `download-release-*`
+
+### What Release installation still requires
+
+The release installation path still expects these commands to already exist locally:
 
 - `claude`
 - `node`
@@ -622,6 +654,9 @@ The GitHub Release workflow will:
 - package platform-specific release archives;
 - generate SHA256 checksum files;
 - publish the assets to GitHub Releases.
+
+---
+
 ## Troubleshooting
 
 ### `No .encoding-rules found`
