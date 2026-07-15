@@ -8,242 +8,39 @@ Codepage Bridge exposes `Read`, `Grep`, `Edit`, and `Write` over MCP while trans
 
 It is designed for legacy codebases that still use GBK/GB2312/GB18030, Big5, Shift-JIS, EUC-KR, Windows codepages, UTF-16, and other non-UTF-8 encodings.
 
-## Quick Start
+## Recommended install
 
-You currently have three installation paths:
+This is now the single recommended installation path for end users.
 
-### Option A — Install from Marketplace (plugin-ready, publish step still required)
+### Windows
 
-This is the intended long-term default path for ordinary users.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install\install-windows.ps1
+```
 
-Current status:
+### macOS / Linux
 
-- the repository now contains the minimum Claude Code plugin / marketplace structure;
-- the plugin declares Codepage Bridge through a plugin-local `.mcp.json`;
-- the plugin includes `/setup`, `/setup-project`, and `/doctor` commands.
+```bash
+bash ./install/install-unix.sh
+```
 
-What is still required before true marketplace one-click installation works end to end:
+What this does:
 
-1. publish `codepage-bridge-mcp` to npm or another `npx`-reachable registry;
-2. add this repository to a Claude Code marketplace source;
-3. install the plugin from that marketplace.
+- registers Claude Code MCP using the published npm package;
+- uses `npx -y codepage-bridge-mcp` as the MCP server command;
+- verifies that the MCP is connected.
 
-Once those steps are completed, users will be able to install Codepage Bridge from marketplace without cloning the repository.
-
-For now, use **GitHub Release installation** below.
-
-### Option B — Install from GitHub Release (recommended for normal users right now)
-
-This is the current recommended path for ordinary users.
-
-You can choose one of two sub-paths:
-
-1. **You already downloaded and extracted the release package**
-2. **You want a script to download the release package for you**
-
-Both paths avoid local `npm install` and local `npm run build`.
-
-They still require local:
+What this requires locally:
 
 - `claude`
 - `node`
 
-### Option C — Install from source (contributors and local development only)
-
-Use this path only if you want to:
-
-- develop Codepage Bridge itself;
-- inspect or modify the implementation;
-- debug installation issues locally.
-
-Typical flow:
-
-1. clone the repository;
-2. run `npm install`;
-3. run `npm run build`;
-4. register the MCP manually or via the source installer.
-
-If you skip the built-in tool blocking and `CLAUDE.md` policy steps, Claude Code may continue using its built-in file tools and bypass `.encoding-rules`.
-
----
-
-## Marketplace / Plugin Publishing Plan
-
-This repository now includes the minimum Claude Code marketplace/plugin structure:
-
-- `.claude-plugin/plugin.json`
-- `.claude-plugin/marketplace.json`
-- plugin-local `.mcp.json`
-- plugin commands in `commands/`
-
-The plugin-local `.mcp.json` currently starts Codepage Bridge with:
-
-```json
-{
-  "mcpServers": {
-    "codepage-bridge": {
-      "command": "npx",
-      "args": ["-y", "codepage-bridge-mcp"]
-    }
-  }
-}
-```
-
-That means marketplace installation depends on the package name `codepage-bridge-mcp` being publicly installable through `npx`.
-
-### Publishing steps
-
-1. publish `codepage-bridge-mcp` to npm;
-2. keep `package.json`, `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json` versions in sync;
-3. add this repository to a Claude Code marketplace source;
-6. validate the plugin with:
-
-```bash
-claude plugin validate . --strict
-```
-
-7. install from marketplace and run `/setup`.
-
----
-
-## Install from GitHub Release
-
-This is the easiest path for end users today.
-
-There are **two valid ways** to use the Release installer flow.
-
-### Path 1 — You already downloaded and extracted a release package
-
-This is the preferred path if you are already inside an extracted release directory.
-
-Use:
-
-#### Windows
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install\install-this-release-windows.ps1
-```
-
-#### macOS / Linux
-
-```bash
-bash ./install/install-this-release-unix.sh
-```
-
-What it does:
-
-- checks that the current extracted package contains `dist/src/server.js`;
-- registers Claude Code MCP using that local package;
-- does **not** download anything.
-
-### Path 2 — You want the installer to download the release package for you
-
-Use:
-
-#### Windows
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install\download-release-windows.ps1
-```
-
-#### macOS / Linux
-
-```bash
-bash ./install/download-release-unix.sh
-```
-
-What it does:
-
-- fetches the latest release from GitHub;
-- downloads the correct platform archive;
-- extracts it under the user install directory;
-- registers Claude Code MCP.
-
-You can also install a specific version.
-
-#### Windows
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install\download-release-windows.ps1 -Version v0.1.0
-```
-
-#### macOS / Linux
-
-```bash
-bash ./install/download-release-unix.sh v0.1.0
-```
-
-### Compatibility wrappers
-
-The old `install-from-release-*` scripts are kept as compatibility wrappers:
-
-- if run inside an extracted release package, they install from local files;
-- otherwise they fall back to downloading the release package.
-
-These are still valid, but the clearer scripts are:
-
-- `install-this-release-*`
-- `download-release-*`
-
-### What Release installation still requires
-
-The release installation path still expects these commands to already exist locally:
-
-- `claude`
-- `node`
-
-It does **not** require:
+What it does **not** require:
 
 - `git clone`
 - `npm install`
 - `npm run build`
-
----
-
-## Install from source
-
-Use this path only for contributors, local debugging, or development.
-
-### 1. Clone the repository
-
-```bash
-git clone git@github.com:skyispainted/codepage-bridge-mcp.git
-cd codepage-bridge-mcp
-```
-
-### 2. Install dependencies
-
-```bash
-npm install
-```
-
-### 3. Build
-
-```bash
-npm run build
-```
-
-The server entry point is:
-
-```text
-dist/src/server.js
-```
-
-### 4. Or use the source installer scripts
-
-These scripts perform the local build and MCP registration for you.
-
-#### Windows
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install\install-from-source-windows.ps1
-```
-
-#### macOS / Linux
-
-```bash
-bash ./install/install-from-source-unix.sh
-```
+- downloading a GitHub Release package first
 
 ---
 
@@ -267,120 +64,11 @@ If new text cannot be represented in the target encoding, the write fails instea
 
 ---
 
-## Features
-
-- Encoding-aware `Read`, `Grep`, `Edit`, and `Write` tools.
-- Project-level `.encoding-rules` with gitignore-like glob behavior.
-- The nearest `.encoding-rules` defines both the project root and active rules.
-- Last matching rule wins; `!pattern` resets matching files to strict UTF-8.
-- Basename patterns such as `*.cpp` match at every directory depth.
-- Strict UTF-8 fallback for files not matched by a rule.
-- GBK/GB2312/GB18030, Big5, Shift-JIS, EUC-KR, Windows codepages, UTF-8, and UTF-16 support.
-- BOM and dominant line-ending preservation for edits.
-- Read-before-write protection and stale-write detection using byte hashes.
-- Atomic temporary-file writes and per-path write locks.
-- Symlink and project-root boundary checks.
-- Image, PDF, and Jupyter Notebook reading.
-- Grep output modes, context lines, glob/type filters, regex flags, and pagination.
-- Large-file partial edit authorization: the model only needs to read the target lines it wants to edit, not the entire file.
-
----
-
-## Requirements
-
-- Node.js 20 or newer.
-- Claude Code or another MCP client with stdio server support.
-- Optional: Poppler commands `pdfinfo` and `pdftoppm` for PDF page rendering.
-
-Check prerequisites:
-
-### Windows
-
-```powershell
-node --version
-npm --version
-claude --version
-```
-
-### macOS / Linux
-
-```bash
-node --version
-npm --version
-claude --version
-```
-
----
-
-## Claude Code Setup
-
-You can install Codepage Bridge either:
-
-- **user-level**: available in all your projects;
-- **project-level**: committed as part of a single repository.
-
-### Option A — User-level setup
-
-Recommended if you use legacy-encoded projects regularly.
-
-#### Windows
-
-```powershell
-claude mcp add --scope user codepage-bridge -- node C:\absolute\path\to\codepage-bridge-mcp\dist\src\server.js
-```
-
-#### macOS / Linux
-
-```bash
-claude mcp add --scope user codepage-bridge -- node /absolute/path/to/codepage-bridge-mcp/dist/src/server.js
-```
-
-Verify:
-
-```bash
-claude mcp get codepage-bridge
-claude mcp list
-```
-
-Expected result:
-
-- name: `codepage-bridge`
-- status: `Connected`
-
-### Option B — Project-level setup
-
-Recommended if you want the repository itself to declare the MCP.
-
-Create `.mcp.json` in the project root:
-
-```json
-{
-  "mcpServers": {
-    "codepage-bridge": {
-      "type": "stdio",
-      "command": "node",
-      "args": [
-        "/absolute/path/to/codepage-bridge-mcp/dist/src/server.js"
-      ]
-    }
-  }
-}
-```
-
-Shared project MCP configurations may require approval the first time Claude Code opens the project.
-
-Minimal templates are included under:
-
-- `examples/minimal-project/`
-- `examples/claude-config/`
-
----
-
-## Extremely Important: Disable the Built-in File Tools
+## Required Claude Code configuration
 
 Installing the MCP is **not sufficient by itself**.
 
-Claude Code may continue choosing its built-in:
+Claude Code may still choose its built-in:
 
 - `Read`
 - `Grep`
@@ -390,11 +78,9 @@ Claude Code may continue choosing its built-in:
 
 Those tools bypass `.encoding-rules`.
 
-You must block them and allow the Codepage Bridge tools.
+### Step 1 — merge `settings.fragment.json`
 
-### Edit `~/.claude/settings.json`
-
-Add the following entries to your existing settings file:
+Merge this into your existing `~/.claude/settings.json`:
 
 ```json
 {
@@ -416,40 +102,13 @@ Add the following entries to your existing settings file:
 }
 ```
 
-**Do not replace your whole settings file unless it is empty.** Merge these arrays into your existing configuration.
-
-### If your settings file already has `permissions.allow`
-
-Append these four entries:
-
-```json
-"mcp__codepage-bridge__Read"
-"mcp__codepage-bridge__Grep"
-"mcp__codepage-bridge__Edit"
-"mcp__codepage-bridge__Write"
-```
-
-### If your settings file already has `permissions.deny`
-
-Append these five entries:
-
-```json
-"Read"
-"Grep"
-"Edit"
-"Write"
-"NotebookEdit"
-```
-
-An example merge snippet is included in:
+Template file:
 
 - `examples/claude-config/settings.fragment.json`
 
----
+**Do not replace your whole settings file unless it is empty.** Merge these arrays into your existing configuration.
 
-## Add a `CLAUDE.md` Policy
-
-Even with built-in tools denied, the model can still try to bypass the bridge with shell commands or scripts.
+### Step 2 — add a `CLAUDE.md` policy
 
 Add this to the project `CLAUDE.md`, or to `~/.claude/CLAUDE.md` for a global policy:
 
@@ -471,18 +130,11 @@ Do not manually transcode files or normalize line endings. `.encoding-rules`
 is the source of truth.
 ```
 
-A minimal project policy file is included in:
+Template file:
 
 - `examples/minimal-project/CLAUDE.md`
 
-Why both `settings.json` and `CLAUDE.md`?
-
-- `deny` removes unsafe built-in tools from the model's available tool list.
-- `CLAUDE.md` prevents the model from bypassing the bridge using shell tools.
-
----
-
-## Create `.encoding-rules`
+### Step 3 — add `.encoding-rules`
 
 Every project using Codepage Bridge must contain `.encoding-rules` at its root.
 
@@ -501,11 +153,9 @@ assets/**/*.csv shift_jis
 !SourceCode/generated/**
 ```
 
-Syntax:
+Template file:
 
-```text
-<glob-pattern> <encoding>
-```
+- `examples/minimal-project/.encoding-rules`
 
 Rules:
 
@@ -518,28 +168,9 @@ Rules:
 - Files with no matching rule use strict UTF-8.
 - The nearest `.encoding-rules` is used; its directory is the allowed project root.
 
-Supported examples:
-
-```text
-utf8
-utf-16le
-gbk
-gb2312
-gb18030
-big5
-shift_jis
-euc-kr
-windows-1251
-windows-1252
-```
-
-A starter file is included in:
-
-- `examples/minimal-project/.encoding-rules`
-
 ---
 
-## Verify the Setup
+## Verify the setup
 
 ### 1. Check the MCP is connected
 
@@ -549,17 +180,21 @@ claude mcp get codepage-bridge
 
 Expected:
 
-- `Scope`: user or project, depending on how you installed it
-- `Status`: `Connected`
+- name: `codepage-bridge`
+- status: `Connected`
 
 ### 2. Start a fresh Claude Code session in a legacy project
 
-### 3. Ask Claude to read a legacy-encoded file
+### 3. Ask Claude to read or search a legacy-encoded file
 
-For example:
+Examples:
 
 ```text
 Read SourceCode/Main.cpp and show the first 10 lines.
+```
+
+```text
+Search SourceCode for the string 错误码.
 ```
 
 ### 4. Confirm the model uses Codepage Bridge tools
@@ -575,388 +210,55 @@ It should **not** call built-in `Read`, `Grep`, `Edit`, or `Write`.
 
 ---
 
-## Tools
+## Features
 
-### `Read`
-
-```json
-{
-  "file_path": "C:\\project\\SourceCode\\Main.cpp",
-  "offset": 1,
-  "limit": 200,
-  "pages": "1-5"
-}
-```
-
-Behavior:
-
-- Text is decoded according to `.encoding-rules` and returned as Unicode.
-- Output uses numbered lines compatible with Claude Code workflows.
-- Files larger than 256 KiB require `offset` and `limit`.
-- Multiple ranged reads of the same unchanged file are merged by line coverage.
-- Ranges may be sequential, overlapping, out of order, or concurrent within one MCP process.
-- If the file changes, accumulated coverage is invalidated.
-- Supports PNG, JPEG, GIF, WebP, PDF pages, and Notebook cells.
-- Notebook reads do not accept text-line `offset` or `limit`.
-
-### `Grep`
-
-```json
-{
-  "pattern": "error|failed",
-  "path": "C:\\project",
-  "glob": "**/*.log",
-  "output_mode": "content",
-  "-i": false,
-  "-n": true,
-  "-C": 2,
-  "head_limit": 250,
-  "offset": 0
-}
-```
-
-Supported options:
-
-- `output_mode`: `content`, `files_with_matches`, or `count`
-- `glob`
-- common `type` filters
-- `-i`, `-n`, `-o`
-- `-A`, `-B`, `-C`, `context`
-- `multiline`
-- `head_limit`, `offset`
-
-Each candidate file is decoded using its own nearest `.encoding-rules`. Explicit single-file decode failures are reported as errors rather than being misreported as zero matches.
-
-### `Edit`
-
-```json
-{
-  "file_path": "C:\\project\\SourceCode\\Main.cpp",
-  "old_string": "old text",
-  "new_string": "new text",
-  "replace_all": false
-}
-```
-
-Behavior:
-
-- Existing files do not require reading the whole file.
-- An edit is authorized when every line covered by the selected `old_string` match was actually returned to the model.
-- For unique targets in large files, the model only needs to read the relevant nearby lines.
-- With `replace_all: true`, every matching range must have been read.
-- If a target was not read, the error reports the exact missing line range(s).
-- The file is re-read and hashed immediately before writing.
-- Multiple matches are rejected unless `replace_all` is true.
-- Straight/curly quote compatibility follows Claude Code edit behavior.
-- The original encoding, BOM, and dominant line ending are preserved.
-
-### `Write`
-
-```json
-{
-  "file_path": "C:\\project\\SourceCode\\NewFile.cpp",
-  "content": "full content"
-}
-```
-
-Behavior:
-
-- New files use the encoding selected by `.encoding-rules`.
-- Existing files still require a complete prior `Read`.
-- Existing files retain encoding and BOM metadata.
-- Complete rewrites use the line endings supplied by the caller.
+- Encoding-aware `Read`, `Grep`, `Edit`, and `Write` tools.
+- Project-level `.encoding-rules` with gitignore-like glob behavior.
+- The nearest `.encoding-rules` defines both the project root and active rules.
+- Last matching rule wins; `!pattern` resets matching files to strict UTF-8.
+- Basename patterns such as `*.cpp` match at every directory depth.
+- Strict UTF-8 fallback for files not matched by a rule.
+- GBK/GB2312/GB18030, Big5, Shift-JIS, EUC-KR, Windows codepages, UTF-8, and UTF-16 support.
+- BOM and dominant line-ending preservation for edits.
+- Read-before-write protection and stale-write detection using byte hashes.
+- Atomic temporary-file writes and per-path write locks.
+- Symlink and project-root boundary checks.
+- Image, PDF, and Jupyter Notebook reading.
+- Grep output modes, context lines, glob/type filters, regex flags, and pagination.
+- Large-file partial edit authorization: the model only needs to read the target lines it wants to edit, not the entire file.
 
 ---
 
-## Minimal Templates Included
+## Maintainer notes
 
-This repository includes starter files under:
+### npm package
 
-- `examples/minimal-project/.encoding-rules`
-- `examples/minimal-project/.mcp.json`
-- `examples/minimal-project/CLAUDE.md`
-- `examples/claude-config/settings.fragment.json`
-
-Use them as copy-paste starting points.
-
----
-
-## NPM_TOKEN automation note
-
-The GitHub release workflow now publishes the npm package automatically using Trusted Publishing before packaging release assets.
-
-Repository maintainers must configure a GitHub Actions secret named NPM_TOKEN.
-
-Important: if a token was ever pasted into chat, terminal history, logs, or screenshots, revoke it in npm immediately and create a new publish token before storing it in GitHub Secrets.
-
-Ensure the GitHub repository is allowed to publish this package in the npm Trusted Publishing settings.
-
-## Maintainer Release Flow
-
-To publish a new release:
+The package is published and installable via:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+npx -y codepage-bridge-mcp
 ```
 
-The GitHub Release workflow will:`r`n`r`n- publish the npm package using `NPM_TOKEN`;
+### Plugin / marketplace status
 
-- run type checks;
-- run the full test suite;
-- build the project;
-- prune dev dependencies;
-- package platform-specific release archives;
-- generate per-asset SHA256 files;
-- generate a combined `checksums.txt` file;
-- publish the assets to GitHub Releases.
+This repository is plugin-ready and marketplace-ready.
 
----
+Plugin files:
 
-## npm Publish Readiness
-
-The repository is now prepared for npm publishing.
-
-### Package shape
-
-The published tarball contains only:
-
-- `dist/src/`
-- `.claude-plugin/`
+- `.claude-plugin/plugin.json`
+- `.claude-plugin/marketplace.json`
 - `.mcp.json`
-- `install/`
-- `examples/`
-- `README.md`
-- `README_CN.md`
-- `LICENSE`
+- `commands/setup.md`
+- `commands/setup-project.md`
+- `commands/doctor.md`
 
-It does **not** publish:
+### Release artifacts
 
-- `src/`
-- `test/`
-- `node_modules/`
-- project-local `.claude/`
-- release build caches
+GitHub Release packaging is still maintained for users who prefer downloadable archives, but that is no longer the primary installation path described in this README.
 
-### Prepublish checks
+### Release workflow
 
-`prepublishOnly` now runs:
-
-```bash
-npm run check
-npm test
-npm run build
-```
-
-### Dry-run verification
-
-Before publishing, run:
-
-```bash
-npm pack --dry-run
-```
-
-This verifies the final npm tarball contents.
-
-### Publish steps
-
-1. log in to npm:
-
-```bash
-npm login
-```
-
-2. publish the package:
-
-```bash
-npm publish
-```
-
-3. verify that this works:
-
-```bash
-npx -y codepage-bridge-mcp
-```
-
-Once that succeeds, the plugin / marketplace path becomes fully installable because the plugin-local `.mcp.json` already points at:
-
-```json
-{
-  "mcpServers": {
-    "codepage-bridge": {
-      "command": "npx",
-      "args": ["-y", "codepage-bridge-mcp"]
-    }
-  }
-}
-```
-## Final Marketplace Publish & Install Plan
-
-Codepage Bridge is now **plugin-ready** and **npm-ready**.
-
-### What is already done
-
-- plugin manifests exist:
-  - `.claude-plugin/plugin.json`
-  - `.claude-plugin/marketplace.json`
-- plugin-local MCP declaration exists:
-  - `.mcp.json`
-- plugin commands exist:
-  - `/setup`
-  - `/setup-project`
-  - `/doctor`
-- npm publish metadata is prepared in `package.json`
-- `npm pack --dry-run` has been verified
-- `claude plugin validate . --strict` passes
-
-### What is still required before marketplace installation fully works
-
-1. log in to npm
-2. publish `codepage-bridge-mcp`
-3. add this repository to a Claude Code marketplace source
-4. install the plugin from marketplace
-
-### Actual publish checklist
-
-Run these commands locally:
-
-```bash
-npm login
-npm whoami
-npm pack --dry-run
-npm publish
-```
-
-After publish, verify:
-
-```bash
-npx -y codepage-bridge-mcp
-```
-
-If that works, the plugin-side `.mcp.json` launcher is valid for marketplace installs.
-
-### Marketplace installation flow after npm publish
-
-Once the npm package is live, the intended user flow is:
-
-1. add or update the marketplace source in Claude Code
-2. install the plugin from marketplace
-3. run `/setup`
-4. merge `examples/claude-config/settings.fragment.json`
-5. add project `.encoding-rules`
-6. add the `CLAUDE.md` policy
-
-### Important limitation
-
-Marketplace installation can install the plugin and declare the MCP, but safe usage still depends on project configuration:
-
-- deny built-in `Read`, `Grep`, `Edit`, `Write`, `NotebookEdit`
-- use Codepage Bridge for all file content operations
-- add `.encoding-rules` to each legacy-encoded project
-## Troubleshooting
-
-### `No .encoding-rules found`
-
-Cause:
-
-- the project root does not contain `.encoding-rules`;
-- you are pointing at a file outside the intended project root.
-
-Fix:
-
-- add `.encoding-rules` to the project root;
-- ensure the target path is inside that project tree.
-
-### `Invalid byte sequence for utf-8`
-
-Cause:
-
-- the file was decoded as UTF-8 but is actually in another encoding;
-- your `.encoding-rules` did not match the file.
-
-Fix:
-
-- confirm the rule file exists;
-- confirm the pattern matches nested paths;
-- for language-wide rules, prefer patterns like `*.cpp gbk`.
-
-### `Text contains characters not representable in ...`
-
-Cause:
-
-- the new text contains characters that the target encoding cannot represent.
-
-Fix:
-
-- change the text;
-- or explicitly move the file to an encoding that can represent those characters.
-
-### `The target text has not been read`
-
-Cause:
-
-- the model tried to edit a region it has not actually seen.
-
-Fix:
-
-- read the exact lines reported in the error;
-- retry the edit.
-
-### `Pending approval`
-
-Cause:
-
-- a project `.mcp.json` server has not been approved yet by Claude Code.
-
-Fix:
-
-- open Claude Code in the project and approve the server;
-- or install Codepage Bridge at user scope.
-
-### `Failed to connect`
-
-Check:
-
-- `node --version`
-- `claude --version`
-- `Test-Path dist/src/server.js` on Windows
-- `test -f ./dist/src/server.js` on macOS/Linux
-- `claude mcp get codepage-bridge`
-
-Then rebuild:
-
-```bash
-npm install
-npm run build
-```
-
-### Claude still uses built-in file tools
-
-Cause:
-
-- built-in tools were not denied;
-- the model is bypassing through shell commands.
-
-Fix:
-
-- update `~/.claude/settings.json` `allow/deny` entries;
-- add the `CLAUDE.md` policy;
-- start a new Claude session.
-
----
-
-## Safety Notes
-
-1. Commit `.encoding-rules` with the project.
-2. Test rules on representative nested files before large edits.
-3. Use basename globs for language-wide rules, for example `*.cpp gbk`.
-4. Do not silently convert encodings.
-5. Do not bypass the bridge with shell tools or scripts.
-6. Keep the MCP process trusted; it has read/write access inside roots defined by `.encoding-rules`.
-7. Review generated diffs; encoding preservation does not guarantee semantic correctness.
-8. PDF support is optional; install Poppler or avoid PDF reads.
-9. Notebook editing is intentionally unavailable. Notebook reading is supported, but there is no `NotebookEdit` tool.
-10. Windows network/device paths are rejected before I/O to avoid unintended SMB access and credential leakage.
+The GitHub release workflow uses npm Trusted Publishing with GitHub OIDC.
 
 ---
 
@@ -969,21 +271,6 @@ npm test
 npm run build
 npm start
 ```
-
-Automated coverage currently includes:
-
-- encoding rule precedence;
-- nested basename matching;
-- strict codecs;
-- lossy-write rejection;
-- stale-write protection;
-- atomic writes;
-- symlink boundaries;
-- images, PDFs, and Notebook reads;
-- GBK read/edit/write flows;
-- Grep modes and error handling;
-- full-file and target-range edit authorization;
-- MCP protocol registration.
 
 ## License
 
