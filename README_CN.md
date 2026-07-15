@@ -511,6 +511,24 @@ Read SourceCode/Main.cpp and show the first 10 lines.
 
 ---
 
+## 维护者发布流程
+
+发布新版本：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+GitHub Release workflow 会自动：
+
+- 执行类型检查；
+- 执行完整测试；
+- 构建项目；
+- 裁剪开发依赖；
+- 打包多平台发布产物；
+- 生成 SHA256 校验文件；
+- 上传到 GitHub Releases。
 ## 常见问题排查
 
 ### `No .encoding-rules found`

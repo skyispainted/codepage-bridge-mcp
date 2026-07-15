@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to package (for example v0.1.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -26,9 +32,23 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag format
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$RELEASE_TAG" in
+            v*) ;;
+            *) echo "Release tag must start with v" >&2; exit 1 ;;
+          esac
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -55,8 +75,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          OUT="release/codepage-bridge-${TAG}-${{ matrix.artifact }}"
+          NAME="codepage-bridge-${RELEASE_TAG}-${{ matrix.artifact }}"
+          OUT="release/${NAME}"
           mkdir -p "$OUT"
           cp -R dist "$OUT/"
           cp -R node_modules "$OUT/"
@@ -72,20 +92,68 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          NAME="codepage-bridge-${TAG}-${{ matrix.artifact }}"
+          NAME="codepage-bridge-${RELEASE_TAG}-${{ matrix.artifact }}"
           tar -czf "${NAME}.tar.gz" -C release "$NAME"
 
       - name: Archive release (zip)
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
-          $tag = "${env:GITHUB_REF_NAME}"
-          $name = "codepage-bridge-$tag-${{ matrix.artifact }}"
+          $name = "codepage-bridge-${env:RELEASE_TAG}-${{ matrix.artifact }}"
           Compress-Archive -Path "release/$name" -DestinationPath "$name.zip" -Force
 
-      - name: Upload release asset
+      - name: Generate SHA256 checksum (Unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="codepage-bridge-${RELEASE_TAG}-${{ matrix.artifact }}.${{ matrix.archive }}"
+          sha256sum "$FILE" > "$FILE.sha256"
+
+      - name: Generate SHA256 checksum (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $file = "codepage-bridge-${env:RELEASE_TAG}-${{ matrix.artifact }}.${{ matrix.archive }}"
+          $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path "$file.sha256" -Value "$hash  $file" -Encoding utf8
+
+      - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          generate_release_notes: true
+          body: |
+            ## Codepage Bridge MCP
+
+            Release assets include:
+
+            - prebuilt `dist/`
+            - production `node_modules/`
+            - installer scripts in `install/`
+            - configuration templates in `examples/`
+            - `README.md` and `README_CN.md`
+
+            ### Recommended installation
+
+            **Windows**
+            ```powershell
+            powershell -ExecutionPolicy Bypass -File .\install\install-from-release-windows.ps1 -Version ${{ env.RELEASE_TAG }}
+            ```
+
+            **macOS / Linux**
+            ```bash
+            bash ./install/install-from-release-unix.sh ${{ env.RELEASE_TAG }}
+            ```
+
+            ### Important
+
+            After installing the MCP, you must still:
+
+            1. merge `examples/claude-config/settings.fragment.json` into `~/.claude/settings.json`
+            2. add the `CLAUDE.md` policy
+            3. create a project `.encoding-rules`
+
           files: |
-            codepage-bridge-${{ github.ref_name }}-${{ matrix.artifact }}.${{ matrix.archive }}
+            codepage-bridge-${{ env.RELEASE_TAG }}-${{ matrix.artifact }}.${{ matrix.archive }}
+            codepage-bridge-${{ env.RELEASE_TAG }}-${{ matrix.artifact }}.${{ matrix.archive }}.sha256

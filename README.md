@@ -582,6 +582,24 @@ Use them as copy-paste starting points.
 
 ---
 
+## Maintainer Release Flow
+
+To publish a new release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The GitHub Release workflow will:
+
+- run type checks;
+- run the full test suite;
+- build the project;
+- prune dev dependencies;
+- package platform-specific release archives;
+- generate SHA256 checksum files;
+- publish the assets to GitHub Releases.
 ## Troubleshooting
 
 ### `No .encoding-rules found`
