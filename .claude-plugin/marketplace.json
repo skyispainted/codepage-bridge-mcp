@@ -1,0 +1,19 @@
+{
+  "name": "codepage-bridge-marketplace",
+  "owner": {
+    "name": "skyispainted"
+  },
+  "metadata": {
+    "description": "Marketplace manifest for Codepage Bridge, an encoding-transparent MCP file tool plugin for Claude Code.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "codepage-bridge",
+      "source": "./",
+      "description": "Encoding-transparent Read, Grep, Edit, and Write tools for legacy encoded projects. Uses .encoding-rules to decode files for the model and write them back safely.",
+      "category": "developer-tools",
+      "tags": ["mcp", "encoding", "gbk", "legacy-codepage", "claude-code", "grep", "edit", "read"]
+    }
+  ]
+}

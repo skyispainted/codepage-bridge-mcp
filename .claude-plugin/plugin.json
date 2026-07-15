@@ -1,0 +1,15 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "codepage-bridge",
+  "version": "0.1.0",
+  "description": "Encoding-transparent file tools for legacy codepages in Claude Code. Adds Read, Grep, Edit, and Write over MCP with .encoding-rules-aware decoding and write-back.",
+  "author": {
+    "name": "skyispainted",
+    "url": "https://github.com/skyispainted"
+  },
+  "commands": [
+    "./commands/setup.md",
+    "./commands/setup-project.md",
+    "./commands/doctor.md"
+  ]
+}

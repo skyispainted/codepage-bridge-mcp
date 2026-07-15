@@ -10,25 +10,31 @@ It is designed for legacy codebases that still use GBK/GB2312/GB18030, Big5, Shi
 
 ## Quick Start
 
-You have three installation paths:
+You currently have three installation paths:
 
-### Option A — Install from Marketplace (coming soon)
+### Option A — Install from Marketplace (plugin-ready, publish step still required)
 
-This will become the easiest path for ordinary users.
+This is the intended long-term default path for ordinary users.
 
-Planned goal:
+Current status:
 
-- one-click install from marketplace;
-- automatic MCP registration;
-- no local `git clone`;
-- no local `npm install`;
-- minimal manual setup after install.
+- the repository now contains the minimum Claude Code plugin / marketplace structure;
+- the plugin declares Codepage Bridge through a plugin-local `.mcp.json`;
+- the plugin includes `/setup`, `/setup-project`, and `/doctor` commands.
+
+What is still required before true marketplace one-click installation works end to end:
+
+1. publish `codepage-bridge-mcp` to npm or another `npx`-reachable registry;
+2. add this repository to a Claude Code marketplace source;
+3. install the plugin from that marketplace.
+
+Once those steps are completed, users will be able to install Codepage Bridge from marketplace without cloning the repository.
 
 For now, use **GitHub Release installation** below.
 
-### Option B — Install from GitHub Release (recommended for normal users)
+### Option B — Install from GitHub Release (recommended for normal users right now)
 
-This is the current recommended installation path.
+This is the current recommended path for ordinary users.
 
 You can choose one of two sub-paths:
 
@@ -42,7 +48,7 @@ They still require local:
 - `claude`
 - `node`
 
-### Option C — Install from source (for contributors and local development)
+### Option C — Install from source (contributors and local development only)
 
 Use this path only if you want to:
 
@@ -61,9 +67,48 @@ If you skip the built-in tool blocking and `CLAUDE.md` policy steps, Claude Code
 
 ---
 
+## Marketplace / Plugin Publishing Plan
+
+This repository now includes the minimum Claude Code marketplace/plugin structure:
+
+- `.claude-plugin/plugin.json`
+- `.claude-plugin/marketplace.json`
+- plugin-local `.mcp.json`
+- plugin commands in `commands/`
+
+The plugin-local `.mcp.json` currently starts Codepage Bridge with:
+
+```json
+{
+  "mcpServers": {
+    "codepage-bridge": {
+      "command": "npx",
+      "args": ["-y", "codepage-bridge-mcp"]
+    }
+  }
+}
+```
+
+That means marketplace installation depends on the package name `codepage-bridge-mcp` being publicly installable through `npx`.
+
+### Publishing steps
+
+1. publish `codepage-bridge-mcp` to npm;
+2. keep `package.json`, `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json` versions in sync;
+3. add this repository to a Claude Code marketplace source;
+4. validate the plugin with:
+
+```bash
+claude plugin validate . --strict
+```
+
+5. install from marketplace and run `/setup`.
+
+---
+
 ## Install from GitHub Release
 
-This is the easiest path for end users.
+This is the easiest path for end users today.
 
 There are **two valid ways** to use the Release installer flow.
 
@@ -652,7 +697,8 @@ The GitHub Release workflow will:
 - build the project;
 - prune dev dependencies;
 - package platform-specific release archives;
-- generate SHA256 checksum files;
+- generate per-asset SHA256 files;
+- generate a combined `checksums.txt` file;
 - publish the assets to GitHub Releases.
 
 ---
