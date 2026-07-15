@@ -624,6 +624,70 @@ npx -y codepage-bridge-mcp
   }
 }
 ```
+## 最终的 Marketplace 发布与安装方案
+
+Codepage Bridge 现在已经同时具备：
+
+- **插件结构就绪**
+- **npm 发布就绪**
+
+### 已经完成的部分
+
+- 插件清单已就绪：
+  - `.claude-plugin/plugin.json`
+  - `.claude-plugin/marketplace.json`
+- 插件根 MCP 声明已就绪：
+  - `.mcp.json`
+- 插件命令已就绪：
+  - `/setup`
+  - `/setup-project`
+  - `/doctor`
+- `package.json` 已具备 npm 发布所需元数据
+- `npm pack --dry-run` 已验证通过
+- `claude plugin validate . --strict` 已通过
+
+### 在真正支持 market 安装之前，还差什么
+
+1. 登录 npm
+2. 发布 `codepage-bridge-mcp`
+3. 把本仓库加入 Claude Code marketplace 源
+4. 从 market 安装插件
+
+### 实际发布清单
+
+本地执行：
+
+```bash
+npm login
+npm whoami
+npm pack --dry-run
+npm publish
+```
+
+发布后验证：
+
+```bash
+npx -y codepage-bridge-mcp
+```
+
+只要这一步成功，就说明插件里的 `.mcp.json` 启动方式已经可用于 marketplace 安装。
+
+### npm 发布后，market 安装的目标流程
+
+1. 在 Claude Code 中添加或更新 marketplace 源
+2. 从 marketplace 安装插件
+3. 执行 `/setup`
+4. 合并 `examples/claude-config/settings.fragment.json`
+5. 添加项目 `.encoding-rules`
+6. 添加 `CLAUDE.md` 策略
+
+### 重要限制
+
+market 安装可以安装插件并声明 MCP，但想安全使用仍然依赖项目配置：
+
+- deny 内置 `Read` / `Grep` / `Edit` / `Write` / `NotebookEdit`
+- 所有文件内容操作必须走 Codepage Bridge
+- legacy 编码项目必须提供 `.encoding-rules`
 ## 常见问题排查
 
 ### `No .encoding-rules found`

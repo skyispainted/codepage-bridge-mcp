@@ -780,6 +780,69 @@ Once that succeeds, the plugin / marketplace path becomes fully installable beca
   }
 }
 ```
+## Final Marketplace Publish & Install Plan
+
+Codepage Bridge is now **plugin-ready** and **npm-ready**.
+
+### What is already done
+
+- plugin manifests exist:
+  - `.claude-plugin/plugin.json`
+  - `.claude-plugin/marketplace.json`
+- plugin-local MCP declaration exists:
+  - `.mcp.json`
+- plugin commands exist:
+  - `/setup`
+  - `/setup-project`
+  - `/doctor`
+- npm publish metadata is prepared in `package.json`
+- `npm pack --dry-run` has been verified
+- `claude plugin validate . --strict` passes
+
+### What is still required before marketplace installation fully works
+
+1. log in to npm
+2. publish `codepage-bridge-mcp`
+3. add this repository to a Claude Code marketplace source
+4. install the plugin from marketplace
+
+### Actual publish checklist
+
+Run these commands locally:
+
+```bash
+npm login
+npm whoami
+npm pack --dry-run
+npm publish
+```
+
+After publish, verify:
+
+```bash
+npx -y codepage-bridge-mcp
+```
+
+If that works, the plugin-side `.mcp.json` launcher is valid for marketplace installs.
+
+### Marketplace installation flow after npm publish
+
+Once the npm package is live, the intended user flow is:
+
+1. add or update the marketplace source in Claude Code
+2. install the plugin from marketplace
+3. run `/setup`
+4. merge `examples/claude-config/settings.fragment.json`
+5. add project `.encoding-rules`
+6. add the `CLAUDE.md` policy
+
+### Important limitation
+
+Marketplace installation can install the plugin and declare the MCP, but safe usage still depends on project configuration:
+
+- deny built-in `Read`, `Grep`, `Edit`, `Write`, `NotebookEdit`
+- use Codepage Bridge for all file content operations
+- add `.encoding-rules` to each legacy-encoded project
 ## Troubleshooting
 
 ### `No .encoding-rules found`
