@@ -1,5 +1,7 @@
 # Codepage Bridge MCP
 
+[中文说明 / README_CN](README_CN.md)
+
 Encoding-transparent file tools for Claude Code and other MCP clients.
 
 Codepage Bridge exposes `Read`, `Grep`, `Edit`, and `Write` over MCP while transparently converting project files between their on-disk legacy encoding and Unicode text for the LLM. The model sees normal Unicode text; files are written back in the encoding selected by the nearest `.encoding-rules`.
@@ -10,7 +12,7 @@ It is designed for legacy codebases that still use GBK/GB2312/GB18030, Big5, Shi
 
 1. Install Node.js 20 or newer.
 2. Clone this repository.
-3. Run `npm install` and `npm run build`.
+3. Run `npm install` and `npm run build`, or use the install script.
 4. Register the MCP in Claude Code.
 5. Add a project `.encoding-rules` file.
 6. Disable Claude Code built-in `Read`, `Grep`, `Edit`, `Write`, and `NotebookEdit`.
@@ -19,16 +21,57 @@ It is designed for legacy codebases that still use GBK/GB2312/GB18030, Big5, Shi
 
 If you skip steps 6 and 7, Claude Code may continue using its built-in file tools and bypass `.encoding-rules`.
 
+## One-command installation
+
+Codepage Bridge includes installer scripts that:
+
+- run `npm install`
+- run `npm run build`
+- register the user-level Claude Code MCP server
+- optionally print the next configuration steps
+
+### Windows
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1
+```
+
+### macOS / Linux
+
+```bash
+bash ./scripts/install-unix.sh
+```
+
+These scripts still require local `node`, `npm`, and `claude` to already be installed.
+
+## Can installation avoid local `npm install` entirely?
+
+**Not with the current repository layout.**
+
+Today, this repository ships source code, so the easiest install flow is:
+
+```text
+clone -> npm install -> build -> claude mcp add
+```
+
+To completely avoid local `npm install`, the project would need one of these release strategies:
+
+1. publish a prebuilt npm package users can run directly;
+2. publish standalone binaries for Windows/macOS/Linux;
+3. publish a single bundled JavaScript artifact plus a minimal runtime wrapper.
+
+If you want that, the next step is to add a GitHub Releases pipeline or npm publishing workflow.
+
 ---
 
-## What Problem It Solves
+## Why
 
 Claude Code built-in file tools assume UTF-8 for normal text reads. In legacy projects this can lead to:
 
 - unreadable C/C++ comments and string literals;
-- searches that silently miss text in GBK or other codepages;
-- edits that rewrite files in UTF-8;
-- accidental encoding corruption during refactors.
+- searches that silently miss text;
+- edits that corrupt the original codepage;
+- accidental UTF-8 rewrites of GBK or other legacy files.
 
 Codepage Bridge keeps encoding conversion below the model boundary:
 
@@ -186,6 +229,11 @@ Create `.mcp.json` in the project root:
 
 Shared project MCP configurations may require approval the first time Claude Code opens the project.
 
+Minimal templates are included under:
+
+- `examples/minimal-project/`
+- `examples/claude-config/`
+
 ---
 
 ## Extremely Important: Disable the Built-in File Tools
@@ -253,6 +301,10 @@ Append these five entries:
 "NotebookEdit"
 ```
 
+An example merge snippet is included in:
+
+- `examples/claude-config/settings.fragment.json`
+
 ---
 
 ## Add a `CLAUDE.md` Policy
@@ -278,6 +330,10 @@ Glob may only be used to discover paths.
 Do not manually transcode files or normalize line endings. `.encoding-rules`
 is the source of truth.
 ```
+
+A minimal project policy file is included in:
+
+- `examples/minimal-project/CLAUDE.md`
 
 Why both `settings.json` and `CLAUDE.md`?
 
@@ -336,6 +392,10 @@ euc-kr
 windows-1251
 windows-1252
 ```
+
+A starter file is included in:
+
+- `examples/minimal-project/.encoding-rules`
 
 ---
 
@@ -468,6 +528,19 @@ Behavior:
 
 ---
 
+## Minimal Templates Included
+
+This repository includes starter files under:
+
+- `examples/minimal-project/.encoding-rules`
+- `examples/minimal-project/.mcp.json`
+- `examples/minimal-project/CLAUDE.md`
+- `examples/claude-config/settings.fragment.json`
+
+Use them as copy-paste starting points.
+
+---
+
 ## Troubleshooting
 
 ### `No .encoding-rules found`
@@ -533,6 +606,7 @@ Fix:
 Check:
 
 - `node --version`
+- `claude --version`
 - `Test-Path dist/src/server.js` on Windows
 - `test -f ./dist/src/server.js` on macOS/Linux
 - `claude mcp get codepage-bridge`

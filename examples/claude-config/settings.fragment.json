@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__codepage-bridge__Read",
+      "mcp__codepage-bridge__Grep",
+      "mcp__codepage-bridge__Edit",
+      "mcp__codepage-bridge__Write"
+    ],
+    "deny": [
+      "Read",
+      "Grep",
+      "Edit",
+      "Write",
+      "NotebookEdit"
+    ]
+  }
+}

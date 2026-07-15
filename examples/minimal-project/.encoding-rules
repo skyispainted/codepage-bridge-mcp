@@ -1,0 +1,10 @@
+# Minimal project encoding rules
+# Last matching rule wins
+
+*.c gbk
+*.cpp gbk
+*.h gbk
+**/*.json utf8
+
+# Example: generated files remain strict UTF-8
+!SourceCode/generated/**
