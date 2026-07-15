@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "codepage-bridge": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/absolute/path/to/codepage-bridge-mcp/dist/src/server.js"
+      ]
+    }
+  }
+}
