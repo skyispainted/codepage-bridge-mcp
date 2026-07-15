@@ -703,6 +703,83 @@ The GitHub Release workflow will:
 
 ---
 
+## npm Publish Readiness
+
+The repository is now prepared for npm publishing.
+
+### Package shape
+
+The published tarball contains only:
+
+- `dist/src/`
+- `.claude-plugin/`
+- `.mcp.json`
+- `install/`
+- `examples/`
+- `README.md`
+- `README_CN.md`
+- `LICENSE`
+
+It does **not** publish:
+
+- `src/`
+- `test/`
+- `node_modules/`
+- project-local `.claude/`
+- release build caches
+
+### Prepublish checks
+
+`prepublishOnly` now runs:
+
+```bash
+npm run check
+npm test
+npm run build
+```
+
+### Dry-run verification
+
+Before publishing, run:
+
+```bash
+npm pack --dry-run
+```
+
+This verifies the final npm tarball contents.
+
+### Publish steps
+
+1. log in to npm:
+
+```bash
+npm login
+```
+
+2. publish the package:
+
+```bash
+npm publish
+```
+
+3. verify that this works:
+
+```bash
+npx -y codepage-bridge-mcp
+```
+
+Once that succeeds, the plugin / marketplace path becomes fully installable because the plugin-local `.mcp.json` already points at:
+
+```json
+{
+  "mcpServers": {
+    "codepage-bridge": {
+      "command": "npx",
+      "args": ["-y", "codepage-bridge-mcp"]
+    }
+  }
+}
+```
 ## Troubleshooting
 
 ### `No .encoding-rules found`

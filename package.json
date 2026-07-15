@@ -1,16 +1,51 @@
 {
   "name": "codepage-bridge-mcp",
   "version": "0.1.0",
-  "private": true,
+  "description": "Encoding-transparent MCP file tools for legacy codepages in Claude Code",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "codepage-bridge-mcp": "dist/src/server.js"
   },
+  "files": [
+    "dist/src/",
+    "LICENSE",
+    "README.md",
+    "README_CN.md",
+    "examples/",
+    "install/",
+    ".claude-plugin/",
+    ".mcp.json"
+  ],
   "scripts": {
+    "clean": "node -e \"const fs=require('fs'); fs.rmSync('dist',{recursive:true,force:true})\"",
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "start": "node dist/src/server.js"
+    "start": "node dist/src/server.js",
+    "prepublishOnly": "npm run check && npm test && npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skyispainted/codepage-bridge-mcp.git"
+  },
+  "homepage": "https://github.com/skyispainted/codepage-bridge-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/skyispainted/codepage-bridge-mcp/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "mcp",
+    "encoding",
+    "gbk",
+    "legacy-codepage",
+    "grep",
+    "read",
+    "edit",
+    "write"
+  ],
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
@@ -25,8 +60,5 @@
     "@types/picomatch": "^4.0.2",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
-  },
-  "engines": {
-    "node": ">=20"
   }
 }

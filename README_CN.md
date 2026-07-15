@@ -547,6 +547,83 @@ GitHub Release workflow 会自动：
 
 ---
 
+## npm 发布准备状态
+
+仓库现在已经具备 npm 发布条件。
+
+### 发布包内容
+
+最终 npm 包只包含：
+
+- `dist/src/`
+- `.claude-plugin/`
+- `.mcp.json`
+- `install/`
+- `examples/`
+- `README.md`
+- `README_CN.md`
+- `LICENSE`
+
+不会发布：
+
+- `src/`
+- `test/`
+- `node_modules/`
+- 项目私有 `.claude/`
+- 本地构建缓存
+
+### 发布前检查
+
+`prepublishOnly` 已配置为自动执行：
+
+```bash
+npm run check
+npm test
+npm run build
+```
+
+### 打包预检查
+
+正式发布前先执行：
+
+```bash
+npm pack --dry-run
+```
+
+用于确认最终发布包内容。
+
+### 发布步骤
+
+1. 登录 npm：
+
+```bash
+npm login
+```
+
+2. 发布包：
+
+```bash
+npm publish
+```
+
+3. 验证：
+
+```bash
+npx -y codepage-bridge-mcp
+```
+
+只要这一步成功，market / 插件安装链路就真正闭环了，因为插件根 `.mcp.json` 已经指向：
+
+```json
+{
+  "mcpServers": {
+    "codepage-bridge": {
+      "command": "npx",
+      "args": ["-y", "codepage-bridge-mcp"]
+    }
+  }
+}
+```
 ## 常见问题排查
 
 ### `No .encoding-rules found`
