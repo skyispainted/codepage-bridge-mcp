@@ -10,9 +10,36 @@ It is designed for legacy codebases that still use GBK/GB2312/GB18030, Big5, Shi
 
 ## Quick Start
 
+You have two installation paths:
+
+### Option A — Install from GitHub Release (recommended for normal users)
+
+This path does **not** require local `npm install` or local `npm run build`.
+
+#### Windows
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install\install-from-release-windows.ps1
+```
+
+#### macOS / Linux
+
+```bash
+bash ./install/install-from-release-unix.sh
+```
+
+This still requires local:
+
+- `claude`
+- `node`
+
+But it does **not** require cloning the repository or running local npm dependency installation.
+
+### Option B — Install from source (recommended for contributors)
+
 1. Install Node.js 20 or newer.
 2. Clone this repository.
-3. Run `npm install` and `npm run build`, or use the install script.
+3. Run `npm install` and `npm run build`, or use the source installer.
 4. Register the MCP in Claude Code.
 5. Add a project `.encoding-rules` file.
 6. Disable Claude Code built-in `Read`, `Grep`, `Edit`, `Write`, and `NotebookEdit`.
@@ -21,46 +48,103 @@ It is designed for legacy codebases that still use GBK/GB2312/GB18030, Big5, Shi
 
 If you skip steps 6 and 7, Claude Code may continue using its built-in file tools and bypass `.encoding-rules`.
 
-## One-command installation
+---
 
-Codepage Bridge includes installer scripts that:
+## Install from GitHub Release
 
-- run `npm install`
-- run `npm run build`
-- register the user-level Claude Code MCP server
-- optionally print the next configuration steps
+This is the easiest path for end users.
+
+The release installer scripts:
+
+- download the latest prebuilt package for the current platform;
+- unpack it into a user directory;
+- register the Claude Code MCP server automatically.
 
 ### Windows
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1
+powershell -ExecutionPolicy Bypass -File .\install\install-from-release-windows.ps1
 ```
 
 ### macOS / Linux
 
 ```bash
-bash ./scripts/install-unix.sh
+bash ./install/install-from-release-unix.sh
 ```
 
-These scripts still require local `node`, `npm`, and `claude` to already be installed.
+You can also install a specific version.
 
-## Can installation avoid local `npm install` entirely?
+#### Windows
 
-**Not with the current repository layout.**
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install\install-from-release-windows.ps1 -Version v0.1.0
+```
 
-Today, this repository ships source code, so the easiest install flow is:
+#### macOS / Linux
+
+```bash
+bash ./install/install-from-release-unix.sh v0.1.0
+```
+
+### What this path still requires
+
+The release installer still expects these commands to already exist locally:
+
+- `claude`
+- `node`
+
+It does **not** require:
+
+- `git clone`
+- `npm install`
+- `npm run build`
+
+---
+
+## Install from source
+
+Use this path if you want to develop, modify, or inspect the project locally.
+
+### 1. Clone the repository
+
+```bash
+git clone git@github.com:skyispainted/codepage-bridge-mcp.git
+cd codepage-bridge-mcp
+```
+
+### 2. Install dependencies
+
+```bash
+npm install
+```
+
+### 3. Build
+
+```bash
+npm run build
+```
+
+The server entry point is:
 
 ```text
-clone -> npm install -> build -> claude mcp add
+dist/src/server.js
 ```
 
-To completely avoid local `npm install`, the project would need one of these release strategies:
+### 4. Or use the source installer scripts
 
-1. publish a prebuilt npm package users can run directly;
-2. publish standalone binaries for Windows/macOS/Linux;
-3. publish a single bundled JavaScript artifact plus a minimal runtime wrapper.
+These scripts perform the local build and MCP registration for you.
 
-If you want that, the next step is to add a GitHub Releases pipeline or npm publishing workflow.
+#### Windows
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install\install-from-source-windows.ps1
+```
+
+#### macOS / Linux
+
+```bash
+bash ./install/install-from-source-unix.sh
+```
 
 ---
 
@@ -125,49 +209,6 @@ claude --version
 node --version
 npm --version
 claude --version
-```
-
----
-
-## Installation
-
-### 1. Clone the repository
-
-```bash
-git clone git@github.com:skyispainted/codepage-bridge-mcp.git
-cd codepage-bridge-mcp
-```
-
-### 2. Install dependencies
-
-```bash
-npm install
-```
-
-### 3. Build
-
-```bash
-npm run build
-```
-
-The server entry point is:
-
-```text
-dist/src/server.js
-```
-
-Check that it exists:
-
-### Windows
-
-```powershell
-Test-Path .\dist\src\server.js
-```
-
-### macOS / Linux
-
-```bash
-test -f ./dist/src/server.js && echo ok
 ```
 
 ---
