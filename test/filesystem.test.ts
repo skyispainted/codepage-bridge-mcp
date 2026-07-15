@@ -22,8 +22,8 @@ describe("safe project paths", () => {
     expect(() => resolveProjectPath(root, "\\\\server\\share\\file")).toThrow(/UNC/);
   });
 
-  it("accepts absolute paths inside the root after normalization", () => {
-    const root = path.join('C:', 'repo', 'project');
+  it("accepts absolute paths inside the root after normalization", async () => {
+    const root = await fixture();
     const target = path.join(root, 'nested', 'file.txt');
     expect(resolveProjectPath(root, target)).toBe(target);
   });
