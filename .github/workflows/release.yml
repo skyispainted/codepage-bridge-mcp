@@ -122,6 +122,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
+          append_body: false
           generate_release_notes: true
           body: |
             ## Codepage Bridge MCP
@@ -133,17 +134,44 @@ jobs:
             - installer scripts in `install/`
             - configuration templates in `examples/`
             - `README.md` and `README_CN.md`
+            - platform SHA256 files
 
-            ### Recommended installation
+            ### Choose the right installer
+
+            #### If you already downloaded and extracted a release package
 
             **Windows**
             ```powershell
-            powershell -ExecutionPolicy Bypass -File .\install\install-from-release-windows.ps1 -Version ${{ env.RELEASE_TAG }}
+            powershell -ExecutionPolicy Bypass -File .\install\install-this-release-windows.ps1
             ```
 
             **macOS / Linux**
             ```bash
-            bash ./install/install-from-release-unix.sh ${{ env.RELEASE_TAG }}
+            bash ./install/install-this-release-unix.sh
+            ```
+
+            #### If you want the installer to download the release for you
+
+            **Windows**
+            ```powershell
+            powershell -ExecutionPolicy Bypass -File .\install\download-release-windows.ps1 -Version ${{ env.RELEASE_TAG }}
+            ```
+
+            **macOS / Linux**
+            ```bash
+            bash ./install/download-release-unix.sh ${{ env.RELEASE_TAG }}
+            ```
+
+            #### If you are a contributor working from source
+
+            **Windows**
+            ```powershell
+            powershell -ExecutionPolicy Bypass -File .\install\install-from-source-windows.ps1
+            ```
+
+            **macOS / Linux**
+            ```bash
+            bash ./install/install-from-source-unix.sh
             ```
 
             ### Important
@@ -157,3 +185,28 @@ jobs:
           files: |
             codepage-bridge-${{ env.RELEASE_TAG }}-${{ matrix.artifact }}.${{ matrix.archive }}
             codepage-bridge-${{ env.RELEASE_TAG }}-${{ matrix.artifact }}.${{ matrix.archive }}.sha256
+
+  checksums:
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Download current release assets
+        uses: robinraju/release-downloader@v1
+        with:
+          tag: ${{ env.RELEASE_TAG }}
+          fileName: 'codepage-bridge-${{ env.RELEASE_TAG }}-*.*sha256'
+          out-file-path: assets
+
+      - name: Build combined checksums file
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat assets/*.sha256 > checksums.txt
+
+      - name: Upload combined checksums
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: checksums.txt
