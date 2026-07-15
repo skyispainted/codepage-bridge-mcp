@@ -25,7 +25,7 @@ export function resolveProjectPath(root: string, input: string): string {
   if (containsNul(root) || containsNul(input)) throw new Error("Paths must not contain NUL bytes");
   if (isUnc(root) || isUnc(input)) throw new Error("UNC and device paths are not allowed");
   const absoluteRoot = path.resolve(root);
-  const candidate = path.resolve(absoluteRoot, input);
+  const candidate = path.isAbsolute(input) ? path.resolve(input) : path.resolve(absoluteRoot, input);
   if (!isPathWithin(candidate, absoluteRoot)) throw new Error(`Path is outside project root: ${input}`);
   return candidate;
 }
