@@ -15,20 +15,16 @@ This is now the single recommended installation path for end users.
 ### Windows
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install\install-windows.ps1
+claude mcp add --scope user codepage-bridge -- npx -y codepage-bridge-mcp
+claude mcp get codepage-bridge
 ```
 
 ### macOS / Linux
 
 ```bash
-bash ./install/install-unix.sh
+claude mcp add --scope user codepage-bridge -- npx -y codepage-bridge-mcp
+claude mcp get codepage-bridge
 ```
-
-What this does:
-
-- registers Claude Code MCP using the published npm package;
-- uses `npx -y codepage-bridge-mcp` as the MCP server command;
-- verifies that the MCP is connected.
 
 What this requires locally:
 
@@ -239,7 +235,7 @@ The package is published and installable via:
 npx -y codepage-bridge-mcp
 ```
 
-### Plugin / marketplace status
+### Plugin / Marketplace status
 
 This repository is plugin-ready and marketplace-ready.
 
@@ -252,9 +248,9 @@ Plugin files:
 - `commands/setup-project.md`
 - `commands/doctor.md`
 
-### Release artifacts
+### GitHub Release
 
-GitHub Release packaging is still maintained for users who prefer downloadable archives, but that is no longer the primary installation path described in this README.
+GitHub Release packaging is still maintained for users who prefer downloadable archives, but it is no longer the primary installation path described in this README.
 
 ### Release workflow
 
