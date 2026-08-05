@@ -83,10 +83,13 @@ export function encodeSnapshotText(snapshot: ReadSnapshot, text: string, preserv
 }
 
 interface ReadCoverage {
-  snapshot: ReadSnapshot
+  hash: string
+  mtimeMs: number
   totalLines: number
   intervals: Array<{ start: number; end: number }>
 }
+
+const MAX_REGISTRY_ENTRIES = 128
 
 function mergeIntervals(
   intervals: Array<{ start: number; end: number }>,
@@ -113,12 +116,41 @@ function mergeIntervals(
 }
 
 export class ReadRegistry {
-  private readonly snapshots = new Map<string, ReadSnapshot>()
+  private readonly snapshots = new Map<string, Pick<ReadSnapshot, 'mtimeMs' | 'hash'>>()
   private readonly coverage = new Map<string, ReadCoverage>()
   private readonly ranges = new Map<string, { mtimeMs: number; hash: string; offset?: number; limit?: number }>()
 
-  get(filePath: string): ReadSnapshot | undefined {
-    return this.snapshots.get(path.resolve(filePath))
+  private evictIfNeeded(): void {
+    while (this.coverage.size >= MAX_REGISTRY_ENTRIES) {
+      const oldest = this.coverage.keys().next().value
+      if (oldest === undefined) return
+      this.clear(oldest)
+    }
+  }
+
+  private touch(filePath: string): void {
+    const coverage = this.coverage.get(filePath)
+    const range = this.ranges.get(filePath)
+    const snapshot = this.snapshots.get(filePath)
+    if (coverage !== undefined) {
+      this.coverage.delete(filePath)
+      this.coverage.set(filePath, coverage)
+    }
+    if (range !== undefined) {
+      this.ranges.delete(filePath)
+      this.ranges.set(filePath, range)
+    }
+    if (snapshot !== undefined) {
+      this.snapshots.delete(filePath)
+      this.snapshots.set(filePath, snapshot)
+    }
+  }
+
+  get(filePath: string): Pick<ReadSnapshot, 'mtimeMs' | 'hash'> | undefined {
+    const absolutePath = path.resolve(filePath)
+    const snapshot = this.snapshots.get(absolutePath)
+    if (snapshot !== undefined) this.touch(absolutePath)
+    return snapshot
   }
 
   clear(filePath?: string): void {
@@ -140,8 +172,10 @@ export class ReadRegistry {
   ): void {
     const key = snapshot.absolutePath
     const existing = this.coverage.get(key)
-    const sameVersion = existing?.snapshot.hash === snapshot.hash
-      && existing.snapshot.mtimeMs === snapshot.mtimeMs
+    if (existing === undefined) this.evictIfNeeded()
+    else this.touch(key)
+    const sameVersion = existing?.hash === snapshot.hash
+      && existing.mtimeMs === snapshot.mtimeMs
     const intervals = sameVersion ? existing.intervals : []
     const merged = mergeIntervals(intervals, {
       start: Math.max(1, range.startLine),
@@ -152,11 +186,12 @@ export class ReadRegistry {
       && merged[0].end >= range.totalLines
     const remembered: ReadSnapshot = { ...snapshot, complete }
     this.coverage.set(key, {
-      snapshot: remembered,
+      hash: remembered.hash,
+      mtimeMs: remembered.mtimeMs,
       totalLines: range.totalLines,
       intervals: merged,
     })
-    if (complete) this.snapshots.set(key, remembered)
+    if (complete) this.snapshots.set(key, { mtimeMs: remembered.mtimeMs, hash: remembered.hash })
     else this.snapshots.delete(key)
     this.ranges.set(key, {
       mtimeMs: snapshot.mtimeMs,
@@ -171,18 +206,18 @@ export class ReadRegistry {
     currentHash: string,
     requiredRanges: Array<{ startLine: number; endLine: number }>,
   ):
-    | { status: 'authorized'; snapshot: ReadSnapshot }
+    | { status: 'authorized' }
     | { status: 'unread' }
     | { status: 'changed' }
     | { status: 'uncovered'; missing: Array<{ startLine: number; endLine: number }> } {
     const entry = this.coverage.get(path.resolve(filePath))
     if (!entry) return { status: 'unread' }
-    if (entry.snapshot.hash !== currentHash) return { status: 'changed' }
+    if (entry.hash !== currentHash) return { status: 'changed' }
     const missing = requiredRanges.filter(required => !entry.intervals.some(
       interval => interval.start <= required.startLine && interval.end >= required.endLine,
     ))
     if (missing.length > 0) return { status: 'uncovered', missing }
-    return { status: 'authorized', snapshot: entry.snapshot }
+    return { status: 'authorized' }
   }
   async isUnchanged(filePath: string, offset?: number, limit?: number): Promise<boolean> {
     const absolutePath = path.resolve(filePath)
@@ -194,20 +229,13 @@ export class ReadRegistry {
   }
 
   updateAfterWrite(snapshot: ReadSnapshot, text: string, buffer: Buffer, mtimeMs: number): void {
-    const { offset: _offset, limit: _limit, ...base } = snapshot
     const hash = digest(buffer)
-    const next: ReadSnapshot = {
-      ...base,
-      text,
-      size: buffer.length,
+    const totalLines = text.split('\n').length
+    this.evictIfNeeded()
+    this.snapshots.set(snapshot.absolutePath, { mtimeMs, hash })
+    this.coverage.set(snapshot.absolutePath, {
       hash,
       mtimeMs,
-      complete: true,
-    }
-    const totalLines = text.split('\n').length
-    this.snapshots.set(snapshot.absolutePath, next)
-    this.coverage.set(snapshot.absolutePath, {
-      snapshot: next,
       totalLines,
       intervals: [{ start: 1, end: totalLines }],
     })

@@ -35,18 +35,52 @@ Codepage Bridge 会按项目里的 `.encoding-rules` 读写文件：
 ### Windows
 
 ```powershell
-claude mcp add --scope user codepage-bridge -- npx -y codepage-bridge-mcp
+# 如果以前装过同名的旧版本，先删除旧配置。
+claude mcp remove codepage-bridge -s user
+
+# 只在用户级注册一次 npm 包。Windows 需要使用 `cmd` 包装启动器。
+claude mcp add --scope user codepage-bridge -- cmd /d /s /c "npx -y codepage-bridge-mcp"
 claude mcp get codepage-bridge
 ```
 
 ### macOS / Linux
 
 ```bash
+# 如果以前装过同名的旧版本，先删除旧配置。
+claude mcp remove codepage-bridge -s user
+
+# 只在用户级注册一次 npm 包。
 claude mcp add --scope user codepage-bridge -- npx -y codepage-bridge-mcp
 claude mcp get codepage-bridge
 ```
 
 如果第二条命令显示 `Connected`，说明安装成功。
+
+### 避免重复注册
+
+`codepage-bridge` 只能在一个配置范围内注册一次。若用户级旧配置仍指向本机构建、而项目 `.mcp.json` 又指向 npm 包，Claude Code 会把同名但命令不同的服务报告为冲突。
+
+用 `claude mcp list` 查看重复项，保留要使用的端点，再删除另一项：
+
+```powershell
+# 保留用户级 npm 安装时，删除项目级配置。
+claude mcp remove codepage-bridge -s project
+
+# 保留项目级配置时，删除旧的用户级安装。
+claude mcp remove codepage-bridge -s user
+```
+
+删除后重新运行 `claude mcp get codepage-bridge`。只有一个端点且状态为 `Connected` 才表示配置正确。
+
+### 大文本文件
+
+`Read` 和 `Grep` 默认允许单个文本文件最大为 `32 MiB`。如需调整，在启动 Claude Code 前把 `CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB` 设为正整数：
+
+```powershell
+setx CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB 64
+```
+
+修改环境变量后请重启 Claude Code。文件越大，解码、按行拆分和正则匹配所需的 Node.js 内存越多。
 
 ---
 

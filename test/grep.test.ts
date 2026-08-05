@@ -45,6 +45,31 @@ describe('encoding-aware Grep', () => {
     expect(text).toContain('错误')
     expect(text).toContain('pagination')
   })
+  it('rejects explicit files over the default per-file search limit', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codepage-grep-large-'))
+    await writeFile(path.join(root, '.encoding-rules'), '*.txt utf8\n', 'utf8')
+    const file = path.join(root, 'large.txt')
+    await writeFile(file, Buffer.alloc(32 * 1024 * 1024 + 1, 'x'))
+    await expect(executeGrep({ pattern: 'x', path: file }))
+      .rejects.toThrow(/exceeds the 32 MiB search limit/)
+  })
+
+  it('uses CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB for the per-file search limit', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codepage-grep-configured-'))
+    await writeFile(path.join(root, '.encoding-rules'), '*.txt utf8\n', 'utf8')
+    const file = path.join(root, 'configured.txt')
+    await writeFile(file, Buffer.alloc(2 * 1024 * 1024, 'x'))
+    const previous = process.env.CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB
+    process.env.CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB = '1'
+    try {
+      await expect(executeGrep({ pattern: 'x', path: file }))
+        .rejects.toThrow(/exceeds the 1 MiB search limit/)
+    } finally {
+      if (previous === undefined) delete process.env.CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB
+      else process.env.CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB = previous
+    }
+  })
+
   it('reports decoding failures for explicit files instead of returning zero matches', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codepage-grep-error-'))
     await writeFile(path.join(root, '.encoding-rules'), '*.txt utf8\n', 'utf8')

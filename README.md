@@ -15,13 +15,21 @@ This is now the single recommended installation path for end users.
 ### Windows
 
 ```powershell
-claude mcp add --scope user codepage-bridge -- npx -y codepage-bridge-mcp
+# Remove an older install with the same name first, if one exists.
+claude mcp remove codepage-bridge -s user
+
+# Register the npm package once, at user scope. `cmd` is required on Windows.
+claude mcp add --scope user codepage-bridge -- cmd /d /s /c "npx -y codepage-bridge-mcp"
 claude mcp get codepage-bridge
 ```
 
 ### macOS / Linux
 
 ```bash
+# Remove an older install with the same name first, if one exists.
+claude mcp remove codepage-bridge -s user
+
+# Register the npm package once, at user scope.
 claude mcp add --scope user codepage-bridge -- npx -y codepage-bridge-mcp
 claude mcp get codepage-bridge
 ```
@@ -37,6 +45,32 @@ What it does **not** require:
 - `npm install`
 - `npm run build`
 - downloading a GitHub Release package first
+
+### Avoid duplicate MCP registrations
+
+Register `codepage-bridge` in only one scope. Claude Code treats the same server name with different commands as a configuration conflict—for example, an older user-scoped local build and this repository's project-scoped `.mcp.json` npm command.
+
+Run `claude mcp list` to diagnose duplicates. Keep the endpoint you want, then remove the other registration:
+
+```powershell
+# Keep the npm command from the user-scoped installation.
+claude mcp remove codepage-bridge -s project
+
+# Or keep a project-local configuration and remove a previous user installation.
+claude mcp remove codepage-bridge -s user
+```
+
+After removing a registration, run `claude mcp get codepage-bridge` again. It must report one endpoint with status `Connected`.
+
+### Large text files
+
+`Read` and `Grep` allow individual text files up to `32 MiB` by default. To use a different limit, set `CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB` to a positive integer before starting Claude Code:
+
+```powershell
+setx CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB 64
+```
+
+Restart Claude Code after changing the variable. Larger files require proportionally more Node.js memory while decoding, splitting lines, and matching regular expressions.
 
 ---
 

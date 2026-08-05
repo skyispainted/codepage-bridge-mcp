@@ -3,6 +3,7 @@ import path from 'node:path'
 
 import picomatch from 'picomatch'
 
+import { maxTextFileBytes, formatMebibytes } from '../limits.js'
 import { getProjectFileContext, readDecodedFile } from '../core.js'
 import type { ToolResponse } from '../toolTypes.js'
 import {
@@ -33,6 +34,11 @@ export interface GrepInput {
   head_limit?: number
   offset?: number
 }
+
+const MAX_GREP_FILES = 10_000
+const MAX_GREP_MATCHES_PER_FILE = 10_000
+const MAX_GREP_ENTRIES = 10_000
+const MAX_GREP_RESPONSE_CHARS = 1024 * 1024
 
 const TYPE_GLOBS: Readonly<Record<string, string[]>> = {
   js: ['**/*.js', '**/*.jsx', '**/*.mjs', '**/*.cjs'],
@@ -102,7 +108,12 @@ async function collectFiles(root: string, target: string, glob: string | undefin
       const absolute = path.join(directory, entry.name)
       const relative = path.relative(root, absolute).split(path.sep).join('/')
       if (entry.isDirectory()) await visit(absolute)
-      else if (entry.isFile() && matchesGlob(relative, glob) && matchesType(relative, type)) files.push(absolute)
+      else if (entry.isFile() && matchesGlob(relative, glob) && matchesType(relative, type)) {
+        files.push(absolute)
+        if (files.length > MAX_GREP_FILES) {
+          throw new Error(`Search matches more than ${MAX_GREP_FILES} files. Narrow path, glob, or type.`)
+        }
+      }
     }
   }
   await visit(target)
@@ -122,6 +133,9 @@ function searchLines(text: string, expression: RegExp, onlyMatching: boolean): L
     const line = lines[index] ?? ''
     expression.lastIndex = 0
     if (!expression.test(line)) continue
+    if (matches.length >= MAX_GREP_MATCHES_PER_FILE) {
+      throw new Error(`File has more than ${MAX_GREP_MATCHES_PER_FILE} matches. Narrow the search pattern.`)
+    }
     if (onlyMatching) {
       const global = new RegExp(expression.source, expression.flags.includes('g') ? expression.flags : `${expression.flags}g`)
       const only = [...line.matchAll(global)].map(match => match[0]).filter(Boolean)
@@ -131,7 +145,13 @@ function searchLines(text: string, expression: RegExp, onlyMatching: boolean): L
   return matches
 }
 
-function formatContent(file: string, text: string, matches: LineMatch[], input: GrepInput, multipleFiles: boolean): string[] {
+function findMatches(text: string, expression: RegExp, input: GrepInput): LineMatch[] {
+  if (!input.multiline) return searchLines(text, expression, input['-o'] ?? false)
+  expression.lastIndex = 0
+  return expression.test(text) ? [{ line: 1, text }] : []
+}
+
+function formatContent(file: string, text: string, matches: LineMatch[], input: GrepInput, includeFile: boolean): string[] {
   const lines = text.split('\n')
   const context = input.context ?? input['-C']
   const before = context ?? input['-B'] ?? 0
@@ -140,7 +160,7 @@ function formatContent(file: string, text: string, matches: LineMatch[], input: 
   const output: string[] = []
   if (input['-o']) {
     for (const match of matches) {
-      for (const part of match.only ?? []) output.push(`${multipleFiles ? `${file}:` : ''}${withNumbers ? `${match.line}:` : ''}${part}`)
+      for (const part of match.only ?? []) output.push(`${includeFile ? `${file}:` : ''}${withNumbers ? `${match.line}:` : ''}${part}`)
     }
     return output
   }
@@ -151,13 +171,45 @@ function formatContent(file: string, text: string, matches: LineMatch[], input: 
     }
   }
   let previous = 0
-  for (const [line, direct] of [...selected.entries()].sort((a, b) => a[0] - b[0])) {
+  for (const [line, direct] of [...selected.entries()].sort((left, right) => left[0] - right[0])) {
     if (previous > 0 && line > previous + 1) output.push('--')
     const separator = direct ? ':' : '-'
-    output.push(`${multipleFiles ? `${file}${separator}` : ''}${withNumbers ? `${line}${separator}` : ''}${lines[line - 1] ?? ''}`)
+    output.push(`${includeFile ? `${file}${separator}` : ''}${withNumbers ? `${line}${separator}` : ''}${lines[line - 1] ?? ''}`)
     previous = line
   }
   return output
+}
+
+async function readSearchableFile(file: string): Promise<string> {
+  const info = await stat(file)
+  const maximumBytes = maxTextFileBytes()
+  if (info.size > maximumBytes) {
+    throw new Error(
+      `File exceeds the ${formatMebibytes(maximumBytes)} search limit. Set CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB to raise it.`,
+    )
+  }
+  const context = await getProjectFileContext(file)
+  const snapshot = await readDecodedFile(context)
+  return snapshot.text
+}
+
+function appendEntries(
+  source: string[],
+  selected: string[],
+  offset: number,
+  limit: number,
+  count: { value: number },
+  characters: { value: number },
+): boolean {
+  for (const entry of source) {
+    if (count.value >= offset && selected.length < limit) {
+      if (characters.value + entry.length > MAX_GREP_RESPONSE_CHARS) return false
+      selected.push(entry)
+      characters.value += entry.length + 1
+    }
+    count.value += 1
+  }
+  return true
 }
 
 export async function executeGrep(input: GrepInput): Promise<ToolResponse> {
@@ -176,43 +228,63 @@ export async function executeGrep(input: GrepInput): Promise<ToolResponse> {
     throw new Error(`Invalid regular expression: ${error instanceof Error ? error.message : String(error)}`)
   }
 
-  const results: Array<{ file: string; text: string; matches: LineMatch[] }> = []
+  const matched: Array<{ file: string; count: number }> = []
   for (const file of files) {
     try {
-      const context = await getProjectFileContext(file)
-      const snapshot = await readDecodedFile(context)
-      const matches = input.multiline
-        ? (expression.test(snapshot.text) ? [{ line: 1, text: snapshot.text }] : [])
-        : searchLines(snapshot.text, expression, input['-o'] ?? false)
-      if (matches.length > 0) results.push({ file, text: snapshot.text, matches })
+      const searchable = await readSearchableFile(file)
+      const matches = findMatches(searchable, expression, input)
+      if (matches.length > 0) matched.push({ file, count: matches.length })
     } catch (error) {
       if (explicitFile) {
         const message = error instanceof Error ? error.message : String(error)
         throw new Error(`Failed to search ${file}: ${message}`, { cause: error })
       }
-      // Directory searches skip binary, undecodable, inaccessible, or independently rooted files.
     }
   }
 
   const mode = input.output_mode ?? 'files_with_matches'
-  let entries: string[]
-  if (mode === 'files_with_matches') entries = results.map(result => result.file)
-  else if (mode === 'count') entries = results.map(result => `${result.file}:${result.matches.length}`)
-  else entries = results.flatMap(result => formatContent(result.file, result.text, result.matches, input, results.length > 1))
-
   const offset = input.offset ?? 0
-  const limit = input.head_limit ?? 250
-  const selected = limit === 0 ? entries.slice(offset) : entries.slice(offset, offset + limit)
-  const suffix = limit !== 0 && offset + selected.length < entries.length
-    ? `\n\n[Showing results with pagination = limit: ${limit}, offset: ${offset}]`
+  const requestedLimit = input.head_limit ?? 250
+  const limit = requestedLimit === 0 ? MAX_GREP_ENTRIES : Math.min(requestedLimit, MAX_GREP_ENTRIES)
+  const entries: string[] = []
+  const count = { value: 0 }
+  const characters = { value: 0 }
+  let truncated = false
+
+  if (mode === 'files_with_matches') {
+    truncated = !appendEntries(matched.map(result => result.file), entries, offset, limit, count, characters)
+  } else if (mode === 'count') {
+    truncated = !appendEntries(matched.map(result => `${result.file}:${result.count}`), entries, offset, limit, count, characters)
+  } else {
+    for (const result of matched) {
+      const searchable = await readSearchableFile(result.file)
+      const matches = findMatches(searchable, expression, input)
+      if (!appendEntries(
+        formatContent(result.file, searchable, matches, input, !explicitFile),
+        entries,
+        offset,
+        limit,
+        count,
+        characters,
+      )) {
+        truncated = true
+        break
+      }
+    }
+  }
+
+  if (count.value > offset + entries.length) truncated = true
+  if (requestedLimit === 0 && count.value >= MAX_GREP_ENTRIES) truncated = true
+  const suffix = truncated
+    ? `\n\n[Showing results with pagination = limit: ${limit}, offset: ${offset}; output is capped for server stability]`
     : ''
   return {
-    content: [{ type: 'text', text: `${selected.join('\n')}${suffix}` }],
+    content: [{ type: 'text', text: `${entries.join('\n')}${suffix}` }],
     structuredContent: {
       mode,
-      numFiles: results.length,
-      numMatches: results.reduce((sum, result) => sum + result.matches.length, 0),
-      entries: selected,
+      numFiles: matched.length,
+      numMatches: matched.reduce((sum, result) => sum + result.count, 0),
+      entries,
     },
   }
 }

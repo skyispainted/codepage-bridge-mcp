@@ -1,6 +1,7 @@
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 
+import { maxTextFileBytes } from '../limits.js'
 import { getProjectFileContext, readDecodedFile, readRegistry } from '../core.js'
 import { inspectProjectPath } from '../filesystem/index.js'
 import { readImage, readPdf, parseNotebook, mapNotebook } from '../media/index.js'
@@ -99,6 +100,12 @@ export async function executeRead(input: ReadInput): Promise<ToolResponse> {
     throw new Error('offset and limit are not supported for Jupyter notebooks; read the complete notebook')
   }
 
+  const maximumBytes = maxTextFileBytes()
+  if (info.size > maximumBytes) {
+    throw new Error(
+      `File content (${info.size} bytes) exceeds the absolute maximum (${maximumBytes} bytes). Set CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB to raise it.`,
+    )
+  }
   if (input.limit === undefined && info.size > DEFAULT_MAX_BYTES) {
     throw new Error(
       `File content (${info.size} bytes) exceeds maximum allowed size (${DEFAULT_MAX_BYTES} bytes). Use offset and limit to read a portion of the file.`,

@@ -162,6 +162,29 @@ describe('encoding-transparent text tools', () => {
       .rejects.toThrow(/not supported/)
   })
 
+  it('rejects a file over the default maximum even when a read limit is provided', async () => {
+    const root = await project('**/*.txt utf8\n')
+    const file = path.join(root, 'oversized.txt')
+    await writeFile(file, Buffer.alloc(32 * 1024 * 1024 + 1, 'x'))
+    await expect(executeRead({ file_path: file, offset: 1, limit: 1 }))
+      .rejects.toThrow(/exceeds the absolute maximum/)
+  })
+
+  it('uses CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB for the Read limit', async () => {
+    const root = await project('**/*.txt utf8\n')
+    const file = path.join(root, 'configured.txt')
+    await writeFile(file, Buffer.alloc(2 * 1024 * 1024, 'x'))
+    const previous = process.env.CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB
+    process.env.CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB = '1'
+    try {
+      await expect(executeRead({ file_path: file, offset: 1, limit: 1 }))
+        .rejects.toThrow(/exceeds the absolute maximum/)
+    } finally {
+      if (previous === undefined) delete process.env.CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB
+      else process.env.CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB = previous
+    }
+  })
+
   it('rejects UNC paths before project discovery', async () => {
     await expect(executeRead({ file_path: '\\\\attacker.invalid\\share\\file.txt' }))
       .rejects.toThrow(/UNC and device paths are not allowed/)
