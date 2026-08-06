@@ -22,6 +22,16 @@ beforeEach(() => {
 })
 
 describe('encoding-transparent text tools', () => {
+  it('reads, edits, and writes UTF-8 files without encoding rules', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'encoding-mcp-no-rules-'))
+    const file = path.join(root, 'plain.txt')
+    await writeFile(file, 'before\nline', 'utf8')
+    await executeRead({ file_path: file })
+    await executeEdit({ file_path: file, old_string: 'before', new_string: 'after' })
+    await executeWrite({ file_path: file, content: 'rewritten' })
+    expect(await readFile(file, 'utf8')).toBe('rewritten')
+  })
+
   it('reads GBK as Unicode and edits back to GBK bytes', async () => {
     const root = await project()
     const file = path.join(root, 'hello.txt')

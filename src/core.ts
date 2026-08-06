@@ -45,10 +45,10 @@ export async function getProjectFileContext(filePath: string): Promise<ProjectFi
   }
   if (!path.isAbsolute(filePath)) throw new Error('file_path must be an absolute path')
   const absolutePath = path.resolve(filePath)
-  const rules = await findEncodingRules(path.dirname(absolutePath))
-  if (rules.file === null) {
-    throw new Error(`No .encoding-rules found for ${filePath}`)
-  }
+  const foundRules = await findEncodingRules(path.dirname(absolutePath))
+  const rules = foundRules.file === null
+    ? { ...foundRules, root: path.dirname(absolutePath) }
+    : foundRules
   resolveProjectPath(rules.root, absolutePath)
   return {
     absolutePath,

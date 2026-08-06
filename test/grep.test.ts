@@ -18,6 +18,14 @@ async function fixture(): Promise<string> {
 }
 
 describe('encoding-aware Grep', () => {
+  it('searches UTF-8 directories without encoding rules', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codepage-grep-no-rules-'))
+    const file = path.join(root, 'plain.txt')
+    await writeFile(file, 'needle', 'utf8')
+    const result = await executeGrep({ pattern: 'needle', path: root })
+    expect((result.content[0] as { text: string }).text).toBe(file)
+  })
+
   it('searches GBK files as Unicode', async () => {
     const root = await fixture()
     const result = await executeGrep({ pattern: '错误', path: root, output_mode: 'content' })

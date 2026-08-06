@@ -166,7 +166,7 @@ Template file:
 
 ### Step 3 — add `.encoding-rules`
 
-Every project using Codepage Bridge must contain `.encoding-rules` at its root.
+`.encoding-rules` is optional. When it is absent, Codepage Bridge treats the target file's directory as the allowed root and reads/writes using strict UTF-8. Add a rules file whenever the project contains legacy-encoded files or needs a shared project root.
 
 Example:
 

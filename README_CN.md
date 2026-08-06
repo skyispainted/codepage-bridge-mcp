@@ -187,7 +187,7 @@ is the source of truth.
 
 ### 3. 给项目加 `.encoding-rules`
 
-每个要使用 Codepage Bridge 的项目根目录，都必须有 `.encoding-rules`。
+`.encoding-rules` 是可选的。没有该文件时，Codepage Bridge 会把目标文件所在目录作为允许访问的根目录，并按严格 UTF-8 读写。项目有旧编码文件或需要共用项目根目录时，再添加规则文件。
 
 例如：
 
@@ -295,13 +295,9 @@ Search SourceCode for the string 错误码.
 
 ## 常见问题
 
-### 1. `No .encoding-rules found`
+### 1. `Invalid byte sequence for utf-8`
 
-说明项目根没有 `.encoding-rules`，或者你读的文件不在项目根范围内。
-
-### 2. `Invalid byte sequence for utf-8`
-
-说明这个文件实际上不是 UTF-8，但你的规则没匹配到它。
+说明这个文件实际不是 UTF-8；对于旧编码文件，请添加匹配编码的 `.encoding-rules`。
 
 最常见修法：
 
