@@ -333,22 +333,6 @@ Search SourceCode for the string 错误码.
 - `examples/minimal-project/CLAUDE.md`
 - `examples/claude-config/settings.fragment.json`
 
----
-
-## 开发者补充说明
-
-如果你是维护者或贡献者：
-
-- npm 包已经可用：
-  ```bash
-  npx -y codepage-bridge-mcp
-  ```
-- 仓库仍保留 GitHub Release 打包；
-- 仓库也已经具备 plugin / marketplace 结构；
-- 但这些都不是普通用户当前最推荐的安装路径。
-
----
-
 ## 许可证
 
 MIT，见 [LICENSE](LICENSE)。

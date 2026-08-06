@@ -259,39 +259,6 @@ It should **not** call built-in `Read`, `Grep`, `Edit`, or `Write`.
 
 ---
 
-## Maintainer notes
-
-### npm package
-
-The package is published and installable via:
-
-```bash
-npx -y codepage-bridge-mcp
-```
-
-### Plugin / Marketplace status
-
-This repository is plugin-ready and marketplace-ready.
-
-Plugin files:
-
-- `.claude-plugin/plugin.json`
-- `.claude-plugin/marketplace.json`
-- `.mcp.json`
-- `commands/setup.md`
-- `commands/setup-project.md`
-- `commands/doctor.md`
-
-### GitHub Release
-
-GitHub Release packaging is still maintained for users who prefer downloadable archives, but it is no longer the primary installation path described in this README.
-
-### Release workflow
-
-The GitHub release workflow uses npm Trusted Publishing with GitHub OIDC.
-
----
-
 ## Development
 
 ```bash
