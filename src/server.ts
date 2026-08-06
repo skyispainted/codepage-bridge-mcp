@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
@@ -117,7 +118,16 @@ export async function main(): Promise<void> {
   await server.connect(transport)
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+export function isMainModule(moduleUrl: string, entryPath = process.argv[1]): boolean {
+  if (entryPath === undefined) return false
+  try {
+    return realpathSync(fileURLToPath(moduleUrl)) === realpathSync(entryPath)
+  } catch {
+    return false
+  }
+}
+
+if (isMainModule(import.meta.url)) {
   main().catch(error => {
     console.error(error)
     process.exitCode = 1

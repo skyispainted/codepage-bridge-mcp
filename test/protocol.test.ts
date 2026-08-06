@@ -1,8 +1,13 @@
+import { mkdtemp, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { describe, expect, it } from 'vitest'
 
-import { createServer } from '../src/server.js'
+import { createServer, isMainModule } from '../src/server.js'
 
 async function connectedClient(): Promise<{ client: Client; close: () => Promise<void> }> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
@@ -20,6 +25,16 @@ async function connectedClient(): Promise<{ client: Client; close: () => Promise
 }
 
 describe('MCP protocol', () => {
+  it('recognizes a symlinked server entrypoint as the main module', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codepage-mcp-main-'))
+    const target = path.join(root, 'server.js')
+    const link = path.join(root, 'codepage-bridge-mcp')
+    await writeFile(target, '')
+    await symlink(target, link, 'file')
+    expect(isMainModule(pathToFileURL(target).href, link)).toBe(true)
+    expect(isMainModule(pathToFileURL(target).href, path.join(root, 'other.js'))).toBe(false)
+  })
+
   it('lists the four compatible tools with strict schemas', async () => {
     const { client, close } = await connectedClient()
     try {
