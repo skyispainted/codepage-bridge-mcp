@@ -53,6 +53,24 @@ describe('encoding-aware Grep', () => {
     expect(text).toContain('错误')
     expect(text).toContain('pagination')
   })
+  it('scans every matching file after output pagination truncates entries', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codepage-grep-complete-scan-'))
+    await Promise.all(Array.from({ length: 300 }, async (_, index) => {
+      await writeFile(path.join(root, `source-${index.toString().padStart(3, '0')}.ts`), `const marker = ${index}\n`, 'utf8')
+    }))
+    const result = await executeGrep({ pattern: 'marker', path: root, head_limit: 1 })
+    expect(result.structuredContent).toMatchObject({ numFiles: 300, numMatches: 300 })
+    expect((result.content[0] as { text: string }).text).toContain('pagination')
+  })
+
+  it('searches matches spanning stream chunks without materializing the file', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codepage-grep-streaming-'))
+    const file = path.join(root, 'streamed.txt')
+    await writeFile(file, `${'x'.repeat(64 * 1024 - 3)}needle\n${'y'.repeat(8 * 1024 * 1024)}`, 'utf8')
+    const result = await executeGrep({ pattern: 'needle', path: file, output_mode: 'content' })
+    expect((result.content[0] as { text: string }).text).toBe(`1:${'x'.repeat(64 * 1024 - 3)}needle`)
+  })
+
   it('rejects explicit files over the default per-file search limit', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'codepage-grep-large-'))
     await writeFile(path.join(root, '.encoding-rules'), '*.txt utf8\n', 'utf8')
