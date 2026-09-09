@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -24,6 +24,19 @@ describe('encoding-aware Grep', () => {
     await writeFile(file, 'needle', 'utf8')
     const result = await executeGrep({ pattern: 'needle', path: root })
     expect((result.content[0] as { text: string }).text).toBe(file)
+  })
+
+  it('keeps encoding rules and output paths correct when realpath normalizes the project path', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'codepage-grep-realpath-root-'))
+    const alias = await mkdtemp(path.join(tmpdir(), 'codepage-grep-realpath-alias-'))
+    const file = path.join(root, 'target.txt')
+    await writeFile(path.join(root, '.encoding-rules'), '*.txt utf8\n', 'utf8')
+    await writeFile(file, 'needle', 'utf8')
+    await symlink(root, path.join(alias, 'project'), process.platform === 'win32' ? 'junction' : 'dir')
+    const logicalFile = path.join(alias, 'project', 'target.txt')
+
+    const result = await executeGrep({ pattern: 'needle', path: logicalFile })
+    expect((result.content[0] as { text: string }).text).toBe(logicalFile)
   })
 
   it('searches GBK files as Unicode', async () => {

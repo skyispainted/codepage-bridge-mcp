@@ -117,7 +117,10 @@ export function parseGrepInput(value: unknown): GrepInput {
 }
 
 interface SearchFile {
+  /** Canonical path validated by inspectProjectPath; use only for filesystem access. */
   file: string
+  /** Logical path derived from the caller input; use in user-visible output and errors. */
+  displayFile: string
   context: ProjectFileContext
   size: number
 }
@@ -200,6 +203,12 @@ class GrepBudget {
   }
 }
 
+function normalizeContextRoot(context: ProjectFileContext, root: string): ProjectFileContext {
+  if (context.root === root && context.rules.root === root) return context
+  const rules = { ...context.rules, root }
+  return { ...context, root, rules }
+}
+
 function contextForFile(context: ProjectFileContext, file: string): ProjectFileContext {
   return {
     ...context,
@@ -220,18 +229,20 @@ function createPathFilter(glob: string | undefined, type: string | undefined): (
 async function* iterateFiles(
   root: string,
   target: string,
+  displayTarget: string,
   targetInfo: Stats,
   context: ProjectFileContext,
   matchesPath: (relative: string) => boolean,
 ): AsyncGenerator<SearchFile> {
   if (targetInfo.isFile()) {
-    yield { file: target, context: contextForFile(context, target), size: targetInfo.size }
+    yield { file: target, displayFile: displayTarget, context: contextForFile(context, target), size: targetInfo.size }
     return
   }
   if (!targetInfo.isDirectory()) throw new Error(`Path is not a file or directory: ${target}`)
 
   const visit = async function* (
     directory: string,
+    displayDirectory: string,
     relativeDirectory: string,
     activeContext: ProjectFileContext,
   ): AsyncGenerator<SearchFile> {
@@ -244,20 +255,28 @@ async function* iterateFiles(
     for (const entry of entries) {
       if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist') continue
       const absolute = path.join(directory, entry.name)
+      const displayAbsolute = path.join(displayDirectory, entry.name)
       const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name
       if (entry.isDirectory()) {
         const safe = await inspectProjectPath(directoryContext.root, absolute)
         const info = await stat(safe.target)
-        if (info.isDirectory()) yield* visit(safe.target, relative, directoryContext)
+        if (info.isDirectory()) yield* visit(safe.target, displayAbsolute, relative, directoryContext)
       } else if (entry.isFile() && matchesPath(relative)) {
         const safe = await inspectProjectPath(directoryContext.root, absolute)
         const info = await stat(safe.target)
-        if (info.isFile()) yield { file: safe.target, context: contextForFile(directoryContext, safe.target), size: info.size }
+        if (info.isFile()) {
+          yield {
+            file: safe.target,
+            displayFile: displayAbsolute,
+            context: contextForFile(directoryContext, safe.target),
+            size: info.size,
+          }
+        }
       }
     }
   }
 
-  yield* visit(target, path.relative(root, target).split(path.sep).join('/'), context)
+  yield* visit(target, displayTarget, path.relative(root, target).split(path.sep).join('/'), context)
 }
 
 interface ResultState {
@@ -447,7 +466,7 @@ async function collectContent(
         for (const part of onlyMatches(line, expression)) {
           if (!budget.consumeOnlyMatch()) return matches
           appendEntryParts(state, [
-            includeFile ? `${file.file}:` : '',
+            includeFile ? `${file.displayFile}:` : '',
             input['-n'] ?? true ? `${lineNumber}:` : '',
             part,
           ], offset, limit)
@@ -455,13 +474,13 @@ async function collectContent(
       } else {
         for (const previous of previousLines) {
           if (previousOutputLine > 0 && previous.line > previousOutputLine + 1) appendEntry(state, '--', offset, limit)
-          appendFormattedLine(state, file.file, previous.line, previous.text, false, input, includeFile, offset, limit)
+          appendFormattedLine(state, file.displayFile, previous.line, previous.text, false, input, includeFile, offset, limit)
           previousOutputLine = previous.line
         }
         previousLines.length = 0
         previousLineChars = 0
         if (previousOutputLine > 0 && lineNumber > previousOutputLine + 1) appendEntry(state, '--', offset, limit)
-        appendFormattedLine(state, file.file, lineNumber, line, true, input, includeFile, offset, limit)
+        appendFormattedLine(state, file.displayFile, lineNumber, line, true, input, includeFile, offset, limit)
         previousOutputLine = lineNumber
         afterUntil = Math.max(afterUntil, lineNumber + after)
       }
@@ -469,7 +488,7 @@ async function collectContent(
     }
 
     if (!input['-o'] && lineNumber <= afterUntil) {
-      appendFormattedLine(state, file.file, lineNumber, line, false, input, includeFile, offset, limit)
+      appendFormattedLine(state, file.displayFile, lineNumber, line, false, input, includeFile, offset, limit)
       previousOutputLine = lineNumber
       continue
     }
@@ -521,11 +540,11 @@ function collectMultilineContent(
   if (input['-o']) {
     for (const part of onlyMatches(text, expression)) {
       if (!budget.consumeOnlyMatch()) return
-      appendEntry(state, `${includeFile ? `${file.file}:` : ''}${input['-n'] ?? true ? '1:' : ''}${part}`, offset, limit)
+      appendEntry(state, `${includeFile ? `${file.displayFile}:` : ''}${input['-n'] ?? true ? '1:' : ''}${part}`, offset, limit)
     }
     return
   }
-  appendEntry(state, formatLine(file.file, 1, text, true, input, includeFile), offset, limit)
+  appendEntry(state, formatLine(file.displayFile, 1, text, true, input, includeFile), offset, limit)
 }
 
 function validateContext(input: GrepInput, limits: GrepLimits): void {
@@ -548,11 +567,12 @@ export async function executeGrep(input: GrepInput): Promise<ToolResponse> {
   const initialContext = await getProjectFileContext(targetInput)
   const safeTarget = await inspectProjectPath(initialContext.root, targetInput)
   const targetInfo = await stat(safeTarget.target)
-  const targetContext = targetInfo.isDirectory()
+  const resolvedTargetContext = targetInfo.isDirectory()
     ? await getProjectFileContext(path.join(safeTarget.target, '.codepage-bridge-search-probe'))
     : initialContext
+  const targetContext = normalizeContextRoot(resolvedTargetContext, safeTarget.root)
   const matchesPath = createPathFilter(input.glob, input.type)
-  const files = iterateFiles(targetContext.root, safeTarget.target, targetInfo, targetContext, matchesPath)
+  const files = iterateFiles(targetContext.root, safeTarget.target, targetInput, targetInfo, targetContext, matchesPath)
   const explicitFile = targetInfo.isFile()
   const flags = `${input['-i'] ? 'i' : ''}${input.multiline ? 'ms' : ''}`
   let expression: RegExp
@@ -580,18 +600,18 @@ export async function executeGrep(input: GrepInput): Promise<ToolResponse> {
     if (file.size > maxTextFileBytes()) {
       budget.skip('max_text_file_bytes')
       if (explicitFile) {
-        throw new Error(`Failed to search ${file.file}: File exceeds the ${formatMebibytes(maxTextFileBytes())} search limit. Set CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB to raise it.`)
+        throw new Error(`Failed to search ${file.displayFile}: File exceeds the ${formatMebibytes(maxTextFileBytes())} search limit. Set CODEPAGE_BRIDGE_MAX_TEXT_FILE_MIB to raise it.`)
       }
       continue
     }
     if (input.multiline && file.size > MAX_MULTILINE_FILE_BYTES) {
       budget.skip('max_multiline_file_bytes')
-      if (explicitFile) throw new Error(`Failed to search ${file.file}: Multiline search is limited to ${formatMebibytes(MAX_MULTILINE_FILE_BYTES)} per file to preserve exact matching`)
+      if (explicitFile) throw new Error(`Failed to search ${file.displayFile}: Multiline search is limited to ${formatMebibytes(MAX_MULTILINE_FILE_BYTES)} per file to preserve exact matching`)
       continue
     }
     if (!budget.startFile(file.size)) {
       budget.skippedFiles += 1
-      if (explicitFile) throw new Error(`Failed to search ${file.file}: ${budgetError(budget.truncationReason).message}`)
+      if (explicitFile) throw new Error(`Failed to search ${file.displayFile}: ${budgetError(budget.truncationReason).message}`)
       break
     }
     try {
@@ -600,8 +620,8 @@ export async function executeGrep(input: GrepInput): Promise<ToolResponse> {
         if (!testLine(searchable, expression)) continue
         numFiles += 1
         numMatches += 1
-        if (mode === 'files_with_matches') appendEntry(state, file.file, offset, limit)
-        else if (mode === 'count') appendEntry(state, `${file.file}:1`, offset, limit)
+        if (mode === 'files_with_matches') appendEntry(state, file.displayFile, offset, limit)
+        else if (mode === 'count') appendEntry(state, `${file.displayFile}:1`, offset, limit)
         else collectMultilineContent(file, searchable, expression, input, !explicitFile, state, offset, limit, budget)
         if (!budget.scanComplete) break
         continue
@@ -618,7 +638,7 @@ export async function executeGrep(input: GrepInput): Promise<ToolResponse> {
         if (fileMatches > 0) {
           numFiles += 1
           numMatches += fileMatches
-          appendEntry(state, mode === 'count' ? `${file.file}:${fileMatches}` : file.file, offset, limit)
+          appendEntry(state, mode === 'count' ? `${file.displayFile}:${fileMatches}` : file.displayFile, offset, limit)
         }
       }
     } catch (error) {
@@ -629,7 +649,7 @@ export async function executeGrep(input: GrepInput): Promise<ToolResponse> {
         else budget.stop('file_error')
       }
       if (explicitFile) {
-        throw new Error(`Failed to search ${file.file}: ${budgetError(budget.truncationReason).message}: ${message}`, { cause: error })
+        throw new Error(`Failed to search ${file.displayFile}: ${budgetError(budget.truncationReason).message}: ${message}`, { cause: error })
       }
       budget.skippedFiles += 1
     }
