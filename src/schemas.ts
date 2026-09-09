@@ -73,6 +73,7 @@ export const grepInputSchema = {
     glob: { type: 'string', description: 'Glob pattern used to filter files, for example *.js or **/*.ts' },
     type: { type: 'string', description: 'File type filter such as js, ts, py, rust, go, or java' },
     output_mode: { type: 'string', enum: ['content', 'files_with_matches', 'count'], description: 'Output mode. Defaults to files_with_matches.' },
+    scan_mode: { type: 'string', enum: ['exact', 'fast'], default: 'exact', description: 'exact scans all eligible files and returns exact counts when complete. fast is opt-in for files_with_matches only and stops each matching file after its first match, so counts are not exact.' },
     '-i': { type: 'boolean', description: 'Case-insensitive search' },
     '-n': { type: 'boolean', description: 'Show line numbers in content mode. Defaults to true.' },
     '-o': { type: 'boolean', description: 'Print only matching non-empty parts of each line' },

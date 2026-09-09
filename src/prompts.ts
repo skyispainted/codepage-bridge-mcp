@@ -45,5 +45,6 @@ Usage:
 - Use output_mode=files_with_matches when you only need file paths; this is the default.
 - Use output_mode=content to see matching lines. Line numbers are included by default.
 - Use output_mode=count to see match counts per file.
-- Results are limited to 250 entries by default; use head_limit and offset for pagination.
+- scan_mode=exact is the default: pagination never stops scanning, so counts are exact when scanComplete is true. scan_mode=fast is opt-in and only valid for files_with_matches; it stops each matching file at its first match and reports countsExact=false.
+- Results are limited to 250 entries by default; use head_limit and offset for pagination. Check structuredContent scanComplete, truncationReason, and outputTruncated whenever a search is resource-limited.
 - Every file is decoded according to its nearest project .encoding-rules, so legacy encoded content is searched as Unicode transparently.`
