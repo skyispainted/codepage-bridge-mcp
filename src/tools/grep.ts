@@ -5,7 +5,7 @@ import { TextDecoder } from 'node:util'
 
 import picomatch from 'picomatch'
 
-import { decodeText, normalizeEncoding, resolveEncoding } from '../encoding/index.js'
+import { decodeText, EncodingRulesLookup, normalizeEncoding, resolveEncoding } from '../encoding/index.js'
 import { inspectProjectPath } from '../filesystem/index.js'
 import { formatMebibytes, grepLimits, maxTextFileBytes, type GrepLimits } from '../limits.js'
 import { getProjectFileContext, type ProjectFileContext } from '../core.js'
@@ -233,6 +233,7 @@ async function* iterateFiles(
   targetInfo: Stats,
   context: ProjectFileContext,
   matchesPath: (relative: string) => boolean,
+  lookup: EncodingRulesLookup,
 ): AsyncGenerator<SearchFile> {
   if (targetInfo.isFile()) {
     yield { file: target, displayFile: displayTarget, context: contextForFile(context, target), size: targetInfo.size }
@@ -250,25 +251,25 @@ async function* iterateFiles(
     entries.sort((left, right) => left.name.localeCompare(right.name))
     const directoryContext = entries.some(entry => entry.name === '.encoding-rules' && entry.isFile())
       && path.resolve(directory) !== activeContext.root
-      ? await getProjectFileContext(path.join(directory, '.codepage-bridge-search-probe'))
+      ? await getProjectFileContext(path.join(directory, '.codepage-bridge-search-probe'), lookup)
       : activeContext
     for (const entry of entries) {
       if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist') continue
       const absolute = path.join(directory, entry.name)
       const displayAbsolute = path.join(displayDirectory, entry.name)
       const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name
+      // The listing already classified this entry, and it never reports a
+      // symbol link as a directory or a plain file, so the walk root that was
+      // resolved once before the walk bounds every path reached from here.
       if (entry.isDirectory()) {
-        const safe = await inspectProjectPath(directoryContext.root, absolute)
-        const info = await stat(safe.target)
-        if (info.isDirectory()) yield* visit(safe.target, displayAbsolute, relative, directoryContext)
+        yield* visit(absolute, displayAbsolute, relative, directoryContext)
       } else if (entry.isFile() && matchesPath(relative)) {
-        const safe = await inspectProjectPath(directoryContext.root, absolute)
-        const info = await stat(safe.target)
+        const info = await stat(absolute)
         if (info.isFile()) {
           yield {
-            file: safe.target,
+            file: absolute,
             displayFile: displayAbsolute,
-            context: contextForFile(directoryContext, safe.target),
+            context: contextForFile(directoryContext, absolute),
             size: info.size,
           }
         }
@@ -564,15 +565,16 @@ export async function executeGrep(input: GrepInput): Promise<ToolResponse> {
   const limits = grepLimits()
   validateContext(input, limits)
   const targetInput = path.resolve(input.path ?? process.cwd())
-  const initialContext = await getProjectFileContext(targetInput)
+  const lookup = new EncodingRulesLookup()
+  const initialContext = await getProjectFileContext(targetInput, lookup)
   const safeTarget = await inspectProjectPath(initialContext.root, targetInput)
   const targetInfo = await stat(safeTarget.target)
   const resolvedTargetContext = targetInfo.isDirectory()
-    ? await getProjectFileContext(path.join(safeTarget.target, '.codepage-bridge-search-probe'))
+    ? await getProjectFileContext(path.join(safeTarget.target, '.codepage-bridge-search-probe'), lookup)
     : initialContext
   const targetContext = normalizeContextRoot(resolvedTargetContext, safeTarget.root)
   const matchesPath = createPathFilter(input.glob, input.type)
-  const files = iterateFiles(targetContext.root, safeTarget.target, targetInput, targetInfo, targetContext, matchesPath)
+  const files = iterateFiles(targetContext.root, safeTarget.target, targetInput, targetInfo, targetContext, matchesPath, lookup)
   const explicitFile = targetInfo.isFile()
   const flags = `${input['-i'] ? 'i' : ''}${input.multiline ? 'ms' : ''}`
   let expression: RegExp

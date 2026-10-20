@@ -5,6 +5,7 @@ import path from 'node:path'
 import {
   decodeText,
   encodeText,
+  EncodingRulesLookup,
   findEncodingRules,
   resolveEncoding,
   type DecodedText,
@@ -38,16 +39,19 @@ function digest(buffer: Buffer): string {
   return createHash('sha256').update(buffer).digest('hex')
 }
 
-export async function getProjectFileContext(filePath: string): Promise<ProjectFileContext> {
+export async function getProjectFileContext(filePath: string, lookup?: EncodingRulesLookup): Promise<ProjectFileContext> {
   if (filePath.includes('\0')) throw new Error('file_path must not contain NUL bytes')
   if (/^[/\\]{2}/.test(filePath) || /^\\\\[?.]\\/.test(filePath)) {
     throw new Error('UNC and device paths are not allowed')
   }
   if (!path.isAbsolute(filePath)) throw new Error('file_path must be an absolute path')
   const absolutePath = path.resolve(filePath)
-  const foundRules = await findEncodingRules(path.dirname(absolutePath))
+  const directory = path.dirname(absolutePath)
+  const foundRules = lookup === undefined
+    ? await findEncodingRules(directory)
+    : await lookup.find(directory)
   const rules = foundRules.file === null
-    ? { ...foundRules, root: path.dirname(absolutePath) }
+    ? { ...foundRules, root: directory }
     : foundRules
   resolveProjectPath(rules.root, absolutePath)
   return {

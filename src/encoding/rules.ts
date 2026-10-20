@@ -11,28 +11,69 @@ function isWithin(candidate: string, boundary: string): boolean {
 }
 
 export async function findEncodingRules(startPath: string, boundary?: string): Promise<EncodingRules> {
-  const resolvedBoundary = path.resolve(boundary ?? path.parse(path.resolve(startPath)).root);
-  let directory = path.resolve(startPath);
-  if (!isWithin(directory, resolvedBoundary)) {
-    throw new Error(`Path is outside the rules boundary: ${startPath}`);
-  }
+  return new EncodingRulesLookup().find(startPath, boundary);
+}
 
-  while (isWithin(directory, resolvedBoundary)) {
-    const rulesFile = path.join(directory, RULES_FILE);
+/**
+ * Resolves encoding rules while remembering, per directory, which ancestor's
+ * rules file applies. A walk over a deep tree would otherwise repeat the same
+ * upward climb for every file it visits.
+ */
+export class EncodingRulesLookup {
+  private readonly resolved = new Map<string, EncodingRules>();
+  private readonly pending = new Map<string, Promise<EncodingRules>>();
+
+  async find(startPath: string, boundary?: string): Promise<EncodingRules> {
+    const directory = path.resolve(startPath);
+    const outstanding = this.pending.get(directory);
+    if (outstanding !== undefined) return outstanding;
+    const climb = this.climb(directory, boundary);
+    // Callers that arrive while this climb is in flight share it. Without that,
+    // concurrent readers each start their own and the memo never hits.
+    this.pending.set(directory, climb);
     try {
-      await access(rulesFile);
-      return parseEncodingRules(await readFile(rulesFile, "utf8"), directory, rulesFile);
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+      return await climb;
+    } finally {
+      this.pending.delete(directory);
     }
-    if (directory === resolvedBoundary) break;
-    const parent = path.dirname(directory);
-    if (parent === directory) break;
-    directory = parent;
   }
 
-  return { root: resolvedBoundary, file: null, rules: [] };
+  private async climb(startPath: string, boundary?: string): Promise<EncodingRules> {
+    const resolvedBoundary = path.resolve(boundary ?? path.parse(startPath).root);
+    let directory = startPath;
+    if (!isWithin(directory, resolvedBoundary)) {
+      throw new Error(`Path is outside the rules boundary: ${startPath}`);
+    }
+
+    const visited: string[] = [];
+    while (isWithin(directory, resolvedBoundary)) {
+      const known = this.resolved.get(directory);
+      if (known !== undefined) return this.remember(visited, known);
+      visited.push(directory);
+
+      const rulesFile = path.join(directory, RULES_FILE);
+      try {
+        await access(rulesFile);
+        const rules = parseEncodingRules(await readFile(rulesFile, "utf8"), directory, rulesFile);
+        return this.remember(visited, rules);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+      }
+
+      if (directory === resolvedBoundary) break;
+      const parent = path.dirname(directory);
+      if (parent === directory) break;
+      directory = parent;
+    }
+
+    return this.remember(visited, { root: resolvedBoundary, file: null, rules: [] });
+  }
+
+  private remember(directories: readonly string[], rules: EncodingRules): EncodingRules {
+    for (const directory of directories) this.resolved.set(directory, rules);
+    return rules;
+  }
 }
 
 export function parseEncodingRules(source: string, root: string, file: string | null = null): EncodingRules {
