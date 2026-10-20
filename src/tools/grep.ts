@@ -1,5 +1,5 @@
 import { createReadStream, type Stats } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
+import { readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { TextDecoder } from 'node:util'
 
@@ -48,6 +48,17 @@ const MAX_GREP_RESPONSE_CHARS = 1024 * 1024
 const MAX_GREP_CONTEXT_CHARS = MAX_GREP_RESPONSE_CHARS
 // Multiline matching is deliberately exact, so its bounded whole-file buffer is stricter than normal streaming search.
 const MAX_MULTILINE_FILE_BYTES = 1024 * 1024
+/**
+ * How many candidate files a directory scan reads ahead of the search, and the
+ * largest single candidate it will read whole. Reading one file at a time leaves
+ * the disk idle between operations, and overlap is what makes a large scan fast.
+ * The two ceilings keep that overlap bounded: at most the window size files are
+ * held, each no larger than the per-file cap, so the retained text is capped at
+ * the product. A candidate bigger than the cap is left to the streaming path,
+ * which charges the budget as it reads instead of taking the whole file at once.
+ */
+const MAX_GREP_PREFETCH = 24
+const MAX_GREP_PREFETCH_FILE_BYTES = 1024 * 1024
 
 type TruncationReason =
   | 'max_scan_bytes'
@@ -168,7 +179,9 @@ class GrepBudget {
       this.stop('max_files')
       return false
     }
-    // Admit complete files only, so stream chunking cannot make byte accounting exceed the request budget.
+    // Admit complete files only, so the budget cannot be exceeded part-way
+    // through a file. The bytes are charged by consumeBytes once the search
+    // actually reads them.
     if (size > this.limits.maxScanBytes - this.scannedBytes) {
       this.stop('max_scan_bytes')
       return false
@@ -177,7 +190,8 @@ class GrepBudget {
     return true
   }
 
-  addBytes(bytes: number): boolean {
+  /** Charges bytes the search actually read against the request budget. */
+  consumeBytes(bytes: number): boolean {
     if (!this.checkTime()) return false
     if (bytes > this.limits.maxScanBytes - this.scannedBytes) {
       this.stop('max_scan_bytes')
@@ -322,6 +336,24 @@ function testLine(line: string, expression: RegExp): boolean {
   return expression.test(line)
 }
 
+/**
+ * Splits whole decoded text into lines. The per-line ceiling is applied later,
+ * where the search consumes a line, so a candidate read ahead of a scan that
+ * stops early cannot report a limit it never reached.
+ */
+function splitSearchableLines(text: string): string[] {
+  return text.split('\n')
+}
+
+/** Decoded candidate text, produced ahead of the search that consumes it. */
+interface PrefetchedFile {
+  lines: string[]
+  /** Bytes read, charged against the budget when the search reaches this file. */
+  bytes: number
+  /** Set when loading this candidate failed; the search reports or skips it. */
+  failure?: unknown
+}
+
 function ensureLineLimit(line: string, budget: GrepBudget): void {
   if (line.length > budget.limits.maxLineChars) {
     budget.stop('max_line_chars')
@@ -348,7 +380,7 @@ async function* readSearchableLines(file: SearchFile, budget: GrepBudget): Async
   }
   try {
     for await (const chunk of createReadStream(file.file, { highWaterMark: 64 * 1024 })) {
-      if (!budget.addBytes(chunk.length)) return
+      if (!budget.consumeBytes(chunk.length)) return
       let decoded = decoder.decode(chunk, { stream: true })
       if (trailingCarriageReturn && !decoded.startsWith('\n')) decoded = `\n${decoded}`
       trailingCarriageReturn = false
@@ -384,6 +416,57 @@ async function* readSearchableLines(file: SearchFile, budget: GrepBudget): Async
   }
 }
 
+/**
+ * Reads and decodes one candidate for the search. Only used for candidates
+ * from a directory walk, where the walk already capped each file's size, so a
+ * whole-file read cannot pull in more than the caller allows for one file.
+ *
+ * The budget is not charged here: it is charged when the search reaches this
+ * candidate, so admission stays serial and in visit order. Reading ahead spends
+ * at most `MAX_GREP_PREFETCH` files of work beyond the budget frontier, which
+ * is the same bounded amount of memory the window already holds.
+ */
+async function loadCandidate(file: SearchFile): Promise<PrefetchedFile> {
+  const encoding = normalizeEncoding(file.context.encoding)
+  try {
+    const bytes = await readFile(file.file)
+    const text = new TextDecoder(encoding, { fatal: true }).decode(bytes).replaceAll('\r\n', '\n').replaceAll('\r', '\n')
+    return { lines: splitSearchableLines(text), bytes: bytes.length }
+  } catch (error) {
+    return { lines: [], bytes: 0, failure: error instanceof TypeError ? new Error(`Invalid byte sequence for ${encoding}`, { cause: error }) : error }
+  }
+}
+
+/**
+ * Runs `load` ahead of the search that consumes its results, keeping the order
+ * of `source` and never holding more than `window` loaded candidates. A file
+ * the loader declines is yielded unloaded, for the search to stream instead.
+ * The search itself stays serial, so the budget it enforces is unchanged; only
+ * the file reads overlap, which is where the time was going.
+ */
+async function* prefetch(
+  source: AsyncGenerator<SearchFile>,
+  load: (file: SearchFile) => Promise<PrefetchedFile>,
+  window: number,
+): AsyncGenerator<{ file: SearchFile; loaded?: PrefetchedFile }> {
+  const reading: Array<Promise<PrefetchedFile | undefined>> = []
+  const held: SearchFile[] = []
+  for await (const file of source) {
+    held.push(file)
+    reading.push(file.size > MAX_GREP_PREFETCH_FILE_BYTES ? Promise.resolve(undefined) : load(file))
+    if (reading.length >= window) {
+      const loaded = await reading.shift()
+      const owner = held.shift()
+      if (owner !== undefined) yield loaded === undefined ? { file: owner } : { file: owner, loaded }
+    }
+  }
+  for (let index = 0; index < reading.length; index += 1) {
+    const loaded = await reading[index]
+    const owner = held[index]
+    if (owner !== undefined) yield loaded === undefined ? { file: owner } : { file: owner, loaded }
+  }
+}
+
 function formatLine(file: string, line: number, text: string, direct: boolean, input: GrepInput, includeFile: boolean): string {
   const separator = direct ? ':' : '-'
   const number = input['-n'] ?? true
@@ -409,9 +492,9 @@ function appendFormattedLine(
   ], offset, limit)
 }
 
-async function countLineMatches(file: SearchFile, expression: RegExp, budget: GrepBudget, firstOnly: boolean): Promise<number> {
+async function countLineMatches(lines: AsyncGenerator<string>, expression: RegExp, budget: GrepBudget, firstOnly: boolean): Promise<number> {
   let matches = 0
-  for await (const line of readSearchableLines(file, budget)) {
+  for await (const line of lines) {
     if (!testLine(line, expression)) continue
     matches += 1
     if (firstOnly) return matches
@@ -422,8 +505,20 @@ async function countLineMatches(file: SearchFile, expression: RegExp, budget: Gr
   return matches
 }
 
+/**
+ * Presents decoded lines from an already-loaded candidate as a line source,
+ * applying the per-line ceiling as each line is consumed.
+ */
+async function* decodedLines(loaded: PrefetchedFile, budget: GrepBudget): AsyncGenerator<string> {
+  for (const line of loaded.lines) {
+    ensureLineLimit(line, budget)
+    yield line
+  }
+}
+
 async function collectContent(
   file: SearchFile,
+  lines: AsyncGenerator<string>,
   expression: RegExp,
   input: GrepInput,
   includeFile: boolean,
@@ -454,7 +549,7 @@ async function collectContent(
     previousLineChars += previous.text.length
   }
 
-  for await (const line of readSearchableLines(file, budget)) {
+  for await (const line of lines) {
     lineNumber += 1
     if (!budget.checkTime()) return matches
     const direct = testLine(line, expression)
@@ -508,6 +603,8 @@ async function readMultilineFile(file: SearchFile, budget: GrepBudget): Promise<
   }
   if (!budget.checkTime()) throw new Error('Grep duration limit exceeded')
 
+  // A multiline search always reads the whole file, so the chunks are charged
+  // here rather than at admission.
   const chunks: Buffer[] = []
   let bytesRead = 0
   for await (const chunk of createReadStream(file.file, { highWaterMark: 64 * 1024 })) {
@@ -515,7 +612,7 @@ async function readMultilineFile(file: SearchFile, budget: GrepBudget): Promise<
       budget.stop('max_multiline_file_bytes')
       throw new Error(`Multiline search is limited to ${formatMebibytes(MAX_MULTILINE_FILE_BYTES)} per file to preserve exact matching`)
     }
-    if (!budget.addBytes(chunk.length)) throw budgetError(budget.truncationReason)
+    if (!budget.consumeBytes(chunk.length)) throw budgetError(budget.truncationReason)
     chunks.push(chunk)
     bytesRead += chunk.length
   }
@@ -561,6 +658,34 @@ function budgetError(reason: TruncationReason | undefined): Error {
   return new Error(`Grep search budget exceeded: ${reason ?? 'unknown'}`)
 }
 
+/**
+ * Searches one candidate's decoded lines and appends whatever the output mode
+ * calls for. Shared by the streamed path and the prefetched path so both charge
+ * the budget and format output identically.
+ */
+async function runSearch(
+  mode: GrepOutputMode,
+  file: SearchFile,
+  lines: AsyncGenerator<string>,
+  expression: RegExp,
+  input: GrepInput,
+  explicitFile: boolean,
+  state: ResultState,
+  offset: number,
+  limit: number,
+  budget: GrepBudget,
+  scanMode: GrepScanMode,
+): Promise<{ files: number; matches: number }> {
+  if (mode === 'content') {
+    const matches = await collectContent(file, lines, expression, input, !explicitFile, state, offset, limit, budget)
+    return { files: matches > 0 ? 1 : 0, matches }
+  }
+  const matches = await countLineMatches(lines, expression, budget, scanMode === 'fast')
+  if (matches === 0) return { files: 0, matches: 0 }
+  appendEntry(state, mode === 'count' ? `${file.displayFile}:${matches}` : file.displayFile, offset, limit)
+  return { files: 1, matches }
+}
+
 export async function executeGrep(input: GrepInput): Promise<ToolResponse> {
   const limits = grepLimits()
   validateContext(input, limits)
@@ -576,6 +701,16 @@ export async function executeGrep(input: GrepInput): Promise<ToolResponse> {
   const matchesPath = createPathFilter(input.glob, input.type)
   const files = iterateFiles(targetContext.root, safeTarget.target, targetInput, targetInfo, targetContext, matchesPath, lookup)
   const explicitFile = targetInfo.isFile()
+  // Reading ahead is skipped when it would undo a saving the caller asked for.
+  // An explicit target can be arbitrarily large and is outside any scan window.
+  // A fast scan stops at each file's first match, so loading whole files first
+  // would read exactly what that mode exists to avoid.
+  const shouldPrefetch = !explicitFile && input.scan_mode !== 'fast'
+  const candidates = shouldPrefetch
+    ? prefetch(files, loadCandidate, MAX_GREP_PREFETCH)
+    : (async function* () {
+        for await (const file of files) yield { file, loaded: undefined as PrefetchedFile | undefined }
+      })()
   const flags = `${input['-i'] ? 'i' : ''}${input.multiline ? 'ms' : ''}`
   let expression: RegExp
   try {
@@ -597,7 +732,8 @@ export async function executeGrep(input: GrepInput): Promise<ToolResponse> {
   let numFiles = 0
   let numMatches = 0
 
-  for await (const file of files) {
+  for await (const candidate of candidates) {
+    const file = candidate.file
     if (!budget.checkTime()) break
     if (file.size > maxTextFileBytes()) {
       budget.skip('max_text_file_bytes')
@@ -629,20 +765,28 @@ export async function executeGrep(input: GrepInput): Promise<ToolResponse> {
         continue
       }
 
-      if (mode === 'content') {
-        const fileMatches = await collectContent(file, expression, input, !explicitFile, state, offset, limit, budget)
-        if (fileMatches > 0) {
-          numFiles += 1
-          numMatches += fileMatches
-        }
-      } else {
-        const fileMatches = await countLineMatches(file, expression, budget, scanMode === 'fast')
-        if (fileMatches > 0) {
-          numFiles += 1
-          numMatches += fileMatches
-          appendEntry(state, mode === 'count' ? `${file.displayFile}:${fileMatches}` : file.displayFile, offset, limit)
-        }
+      // Load failures surface here, where the search has already admitted the
+      // candidate, so a skipped file is reported against the right budget state.
+      if (candidate.loaded === undefined) {
+        // A streamed read charges its own chunks as it consumes them.
+        const lines = readSearchableLines(file, budget)
+        const result = await runSearch(mode, file, lines, expression, input, explicitFile, state, offset, limit, budget, scanMode)
+        numFiles += result.files
+        numMatches += result.matches
+        if (!budget.scanComplete) break
+        continue
       }
+      if (candidate.loaded.failure !== undefined) throw candidate.loaded.failure
+      // The bytes were read ahead of the budget frontier, so charge them now,
+      // before the search consumes the text.
+      if (!budget.consumeBytes(candidate.loaded.bytes)) {
+        budget.skippedFiles += 1
+        break
+      }
+      const lines = decodedLines(candidate.loaded, budget)
+      const result = await runSearch(mode, file, lines, expression, input, explicitFile, state, offset, limit, budget, scanMode)
+      numFiles += result.files
+      numMatches += result.matches
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (budget.truncationReason === undefined) {
