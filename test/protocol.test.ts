@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -8,6 +9,10 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { describe, expect, it } from 'vitest'
 
 import { createServer, isMainModule } from '../src/server.js'
+
+const packageVersion = (JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+) as { version: string }).version
 
 async function connectedClient(): Promise<{ client: Client; close: () => Promise<void> }> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
@@ -44,6 +49,15 @@ describe('MCP protocol', () => {
         expect(tool.inputSchema).toMatchObject({ type: 'object', additionalProperties: false })
         expect(tool.description?.length).toBeGreaterThan(100)
       }
+    } finally {
+      await close()
+    }
+  })
+
+  it('reports the package version as the server version', async () => {
+    const { client, close } = await connectedClient()
+    try {
+      expect(client.getServerVersion()).toEqual({ name: 'codepage-bridge', version: packageVersion })
     } finally {
       await close()
     }

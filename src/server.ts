@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
@@ -81,9 +82,32 @@ function toCallToolResult(response: ToolResponse): CallToolResult {
   }
 }
 
+/**
+ * The package version, reported to clients as the server version. Reading it
+ * from package.json instead of a literal keeps the handshake honest across
+ * releases. The manifest is found by climbing from this module, because the
+ * compiled file sits one directory deeper than the source.
+ */
+function packageVersion(): string {
+  let directory = path.dirname(fileURLToPath(import.meta.url))
+  for (;;) {
+    const manifest = path.join(directory, 'package.json')
+    if (existsSync(manifest)) {
+      const { version } = JSON.parse(readFileSync(manifest, 'utf8')) as { version?: unknown }
+      if (typeof version !== 'string') throw new Error(`${manifest} has no version`)
+      return version
+    }
+    const parent = path.dirname(directory)
+    if (parent === directory) throw new Error('Could not find package.json for the server version')
+    directory = parent
+  }
+}
+
+const PACKAGE_VERSION = packageVersion()
+
 export function createServer(): Server {
   const server = new Server(
-    { name: 'codepage-bridge', version: '0.1.0' },
+    { name: 'codepage-bridge', version: PACKAGE_VERSION },
     { capabilities: { tools: {} } },
   )
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [...toolDefinitions] }))
