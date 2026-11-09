@@ -256,6 +256,8 @@ It should **not** call built-in `Read`, `Grep`, `Edit`, or `Write`.
 - Image, PDF, and Jupyter Notebook reading.
 - Grep output modes, context lines, glob/type filters, regex flags, and pagination.
 - Large-file partial edit authorization: the model only needs to read the target lines it wants to edit, not the entire file.
+- Token-frugal results: `Edit` and `Write` return a one-line confirmation, and `Read` returns only the line-numbered text once, so no tool echoes file contents the model already has.
+- Line endings are transparent: `Read` states the file's CRLF/LF/CR style up front, `Edit` and `Write` accept either convention and keep the file's own style, and every result names the style it preserved.
 
 ---
 

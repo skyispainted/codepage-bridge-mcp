@@ -1,9 +1,15 @@
 import { mkdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 
-import { encodeText } from '../encoding/index.js'
-import { getProjectFileContext, encodeSnapshotText, readDecodedFile, readRegistry } from '../core.js'
-import { createStructuredPatch } from '../diff.js'
+import { encodeText, detectDominantNewline } from '../encoding/index.js'
+import {
+  getProjectFileContext,
+  describeNewline,
+  encodeSnapshotText,
+  normalizeNewlines,
+  readDecodedFile,
+  readRegistry,
+} from '../core.js'
 import { atomicWriteBuffer } from '../filesystem/index.js'
 import type { ToolResponse, WriteInput } from '../toolTypes.js'
 import { assertObject, rejectUnknown, requiredString } from '../validation.js'
@@ -18,6 +24,12 @@ export function parseWriteInput(value: unknown): WriteInput {
 }
 
 export async function executeWrite(input: WriteInput): Promise<ToolResponse> {
+  // Content arrives newline-normalized so the model can send either
+  // convention; the file's own line ending is restored when it is encoded.
+  // A new file has no style yet, so the model's own line ending is used: read
+  // it before normalization erases the difference.
+  const requestedNewline = detectDominantNewline(input.content)
+  const content = normalizeNewlines(input.content)
   const context = await getProjectFileContext(input.file_path)
   let exists = true
   try {
@@ -29,7 +41,8 @@ export async function executeWrite(input: WriteInput): Promise<ToolResponse> {
 
   await mkdir(path.dirname(context.absolutePath), { recursive: true })
   if (!exists) {
-    const buffer = encodeText(input.content, context.encoding)
+    const newline = requestedNewline
+    const buffer = encodeText(content, context.encoding, { newline })
     await atomicWriteBuffer(context.root, context.absolutePath, buffer)
     const info = await stat(context.absolutePath)
     const snapshot = {
@@ -38,22 +51,18 @@ export async function executeWrite(input: WriteInput): Promise<ToolResponse> {
       encoding: context.encoding,
       text: '',
       bom: null,
-      newline: null,
+      newline,
       mtimeMs: 0,
       size: 0,
       hash: '',
       complete: true,
     } as const
-    readRegistry.updateAfterWrite(snapshot, input.content, buffer, info.mtimeMs)
+    readRegistry.updateAfterWrite(snapshot, content, buffer, info.mtimeMs)
     return {
-      content: [{ type: 'text', text: `File created successfully at: ${context.absolutePath}` }],
-      structuredContent: {
-        type: 'create',
-        filePath: context.absolutePath,
-        content: input.content,
-        structuredPatch: createStructuredPatch(context.absolutePath, '', input.content),
-        originalFile: null,
-      },
+      content: [{
+        type: 'text',
+        text: `File created successfully at: ${context.absolutePath} (${snapshot.encoding}, ${describeNewline(newline)} line endings).`,
+      }],
     }
   }
 
@@ -64,20 +73,16 @@ export async function executeWrite(input: WriteInput): Promise<ToolResponse> {
     throw new Error('File has been unexpectedly modified. Read it again before attempting to write it.')
   }
 
-  const buffer = encodeSnapshotText(current, input.content, false)
+  const buffer = encodeSnapshotText(current, content)
   await atomicWriteBuffer(context.root, context.absolutePath, buffer, {
     expected: { mtimeMs: current.mtimeMs, hash: current.hash },
   })
   const info = await stat(context.absolutePath)
-  readRegistry.updateAfterWrite(current, input.content, buffer, info.mtimeMs)
+  readRegistry.updateAfterWrite(current, content, buffer, info.mtimeMs)
   return {
-    content: [{ type: 'text', text: `The file ${context.absolutePath} has been updated successfully.` }],
-    structuredContent: {
-      type: 'update',
-      filePath: context.absolutePath,
-      content: input.content,
-      structuredPatch: createStructuredPatch(context.absolutePath, current.text, input.content),
-      originalFile: current.text,
-    },
+    content: [{
+      type: 'text',
+      text: `The file ${context.absolutePath} has been updated successfully (${current.encoding}, ${describeNewline(current.newline)} line endings preserved).`,
+    }],
   }
 }

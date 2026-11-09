@@ -15,7 +15,9 @@ Usage:
 - This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
 - This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
 - You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
-- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.`
+- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
+- The first result line reports the file path, the line range you received, the encoding, and the file's line-ending style (CRLF, LF, or CR). Trust it; do not probe with Bash, od, file, or a second Read to learn any of those.
+- Content is always returned with LF line endings. A trailing newline is not shown as an extra empty line, so a 3-line file reports 3 lines.`
 
 export const EDIT_PROMPT = `Performs exact string replacements in files.
 
@@ -25,7 +27,9 @@ Usage:
 - ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
 - Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
 - The edit will FAIL if \`old_string\` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use \`replace_all\` to change every instance of \`old_string\`.
-- Use \`replace_all\` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.`
+- Use \`replace_all\` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.
+- Line endings are handled for you: \`old_string\` and \`new_string\` may use either LF or CRLF, and the file keeps its own style on disk. Never inspect or rewrite a file just to fix line endings.
+- The success message states the encoding and line endings that were preserved. That is authoritative; no follow-up read or shell check is needed.`
 
 export const WRITE_PROMPT = `Writes a file to the local filesystem.
 
@@ -34,7 +38,9 @@ Usage:
 - If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
 - Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
 - NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
-- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.`
+- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.
+- Line endings and encoding are handled for you: content may use LF or CRLF and the existing file's style is kept. Never inspect or rewrite a file just to fix line endings.
+- The success message states the encoding and line endings that were preserved. That is authoritative; no follow-up read or shell check is needed.`
 
 export const GREP_DESCRIPTION = 'A powerful search tool built on regular expressions.'
 export const GREP_PROMPT = `A powerful search tool for file contents.

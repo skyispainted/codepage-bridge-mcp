@@ -1,9 +1,16 @@
 import { mkdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 
-import { getProjectFileContext, encodeSnapshotText, readDecodedFile, readRegistry } from '../core.js'
-import { createStructuredPatch } from '../diff.js'
-import { atomicWriteBuffer, inspectProjectPath } from '../filesystem/index.js'
+import {
+  getProjectFileContext,
+  describeNewline,
+  encodeSnapshotText,
+  normalizeNewlines,
+  readDecodedFile,
+  readRegistry,
+} from '../core.js'
+import { detectDominantNewline } from '../encoding/index.js'
+import { atomicWriteBuffer } from '../filesystem/index.js'
 import type { EditInput, ToolResponse } from '../toolTypes.js'
 import {
   assertObject,
@@ -94,7 +101,14 @@ function replaceText(
 }
 
 export async function executeEdit(input: EditInput): Promise<ToolResponse> {
-  if (input.old_string === input.new_string) throw new Error('old_string and new_string must be different')
+  // The model edits the newline-normalized text Read displayed, so either
+  // convention is accepted here; the file's own style is restored on encode.
+  // A new file has no style yet, so the model's own choice is used, which is
+  // why it is captured before normalization erases the difference.
+  const requestedNewline = detectDominantNewline(input.new_string)
+  const oldString = normalizeNewlines(input.old_string)
+  const newString = normalizeNewlines(input.new_string)
+  if (oldString === newString) throw new Error('old_string and new_string must be different')
   if (path.extname(input.file_path).toLowerCase() === '.ipynb') {
     throw new Error('Editing Jupyter notebooks is not supported')
   }
@@ -110,7 +124,7 @@ export async function executeEdit(input: EditInput): Promise<ToolResponse> {
   }
 
   if (!exists) {
-    if (input.old_string !== '') throw new Error(`File does not exist: ${input.file_path}`)
+    if (oldString !== '') throw new Error(`File does not exist: ${input.file_path}`)
     await mkdir(path.dirname(context.absolutePath), { recursive: true })
     const snapshot = {
       absolutePath: context.absolutePath,
@@ -118,36 +132,30 @@ export async function executeEdit(input: EditInput): Promise<ToolResponse> {
       encoding: context.encoding,
       text: '',
       bom: null,
-      newline: null,
+      newline: requestedNewline,
       mtimeMs: 0,
       size: 0,
       hash: '',
       complete: true,
     } as const
-    const buffer = encodeSnapshotText(snapshot, input.new_string)
+    const buffer = encodeSnapshotText(snapshot, newString)
     await atomicWriteBuffer(context.root, context.absolutePath, buffer)
     const info = await stat(context.absolutePath)
-    readRegistry.updateAfterWrite(snapshot, input.new_string, buffer, info.mtimeMs)
+    readRegistry.updateAfterWrite(snapshot, newString, buffer, info.mtimeMs)
     return {
-      content: [{ type: 'text', text: `The file ${context.absolutePath} has been created successfully.` }],
-      structuredContent: {
-        filePath: context.absolutePath,
-        oldString: '',
-        newString: input.new_string,
-        originalFile: '',
-        structuredPatch: createStructuredPatch(context.absolutePath, '', input.new_string),
-        userModified: false,
-        replaceAll: false,
-      },
+      content: [{
+        type: 'text',
+        text: `The file ${context.absolutePath} has been created successfully (${snapshot.encoding}, ${describeNewline(requestedNewline)} line endings).`,
+      }],
     }
   }
 
   const current = await readDecodedFile(context)
-  if (input.old_string === '' && current.text.trim().length > 0) {
+  if (oldString === '' && current.text.trim().length > 0) {
     throw new Error('Cannot use an empty old_string to overwrite a non-empty file')
   }
-  const matches = input.old_string === '' ? [] : findQuoteMatches(current.text, input.old_string)
-  if (input.old_string !== '' && matches.length === 0) throw new Error('old_string not found in file')
+  const matches = oldString === '' ? [] : findQuoteMatches(current.text, oldString)
+  if (oldString !== '' && matches.length === 0) throw new Error('old_string not found in file')
   if (matches.length > 1 && !(input.replace_all ?? false)) {
     throw new Error(`Found ${matches.length} matches of old_string. Provide more surrounding context or set replace_all to true.`)
   }
@@ -170,9 +178,9 @@ export async function executeEdit(input: EditInput): Promise<ToolResponse> {
     throw new Error(`The target text has not been read. Read line range(s) ${ranges} before attempting this edit.`)
   }
 
-  const result = input.old_string === ''
-    ? { content: input.new_string, actual: '', count: 1 }
-    : replaceText(current.text, input.old_string, input.new_string, input.replace_all ?? false, matches)
+  const result = oldString === ''
+    ? { content: newString, actual: '', count: 1 }
+    : replaceText(current.text, oldString, newString, input.replace_all ?? false, matches)
   const buffer = encodeSnapshotText(current, result.content)
   await atomicWriteBuffer(context.root, context.absolutePath, buffer, {
     expected: { mtimeMs: current.mtimeMs, hash: current.hash },
@@ -181,15 +189,9 @@ export async function executeEdit(input: EditInput): Promise<ToolResponse> {
   readRegistry.updateAfterWrite(current, result.content, buffer, info.mtimeMs)
 
   return {
-    content: [{ type: 'text', text: `The file ${context.absolutePath} has been updated successfully.` }],
-    structuredContent: {
-      filePath: context.absolutePath,
-      oldString: result.actual,
-      newString: input.new_string,
-      originalFile: current.text,
-      structuredPatch: createStructuredPatch(context.absolutePath, current.text, result.content),
-      userModified: false,
-      replaceAll: input.replace_all ?? false,
-    },
+    content: [{
+      type: 'text',
+      text: `The file ${context.absolutePath} has been updated successfully (${current.encoding}, ${describeNewline(current.newline)} line endings preserved).`,
+    }],
   }
 }

@@ -39,7 +39,7 @@ describe('encoding-transparent text tools', () => {
 
     const read = await executeRead({ file_path: file })
     expect(read.content[0]).toMatchObject({ type: 'text' })
-    expect((read.content[0] as { text: string }).text).toContain('你好，世界')
+    expect((read.content[1] as { text: string }).text).toContain('你好，世界')
 
     await executeEdit({ file_path: file, old_string: '世界', new_string: '朋友' })
     const bytes = await readFile(file)
@@ -233,5 +233,220 @@ describe('encoding-transparent text tools', () => {
     await expect(executeEdit({ file_path: file, old_string: 'café', new_string: '汉字' }))
       .rejects.toThrow(/not representable/)
     expect(iconv.decode(await readFile(file), 'windows-1252')).toBe('café')
+  })
+})
+
+describe('token-frugal tool results', () => {
+  it('returns a one-line confirmation from Edit instead of echoing the file', async () => {
+    const root = await project()
+    const file = path.join(root, 'quiet-edit.txt')
+    const body = Array.from({ length: 200 }, (_, index) => `line-${index + 1} filler text`).join('\n')
+    await writeFile(file, body, 'utf8')
+    await executeRead({ file_path: file })
+
+    const result = await executeEdit({ file_path: file, old_string: 'line-50 filler', new_string: 'CHANGED' })
+
+    expect(result.structuredContent).toBeUndefined()
+    expect(result.content).toHaveLength(1)
+    const text = (result.content[0] as { text: string }).text
+    expect(text).toContain('updated successfully')
+    expect(text).not.toContain('filler text')
+    expect(text.length).toBeLessThan(300)
+  })
+
+  it('returns a one-line confirmation from Edit when it creates the file', async () => {
+    const root = await project()
+    const file = path.join(root, 'quiet-create.txt')
+
+    const result = await executeEdit({ file_path: file, old_string: '', new_string: 'created body' })
+
+    expect(result.structuredContent).toBeUndefined()
+    const text = (result.content[0] as { text: string }).text
+    expect(text).toContain('created successfully')
+    expect(text).not.toContain('created body')
+  })
+
+  it('returns a one-line confirmation from Write instead of echoing both versions', async () => {
+    const root = await project()
+    const file = path.join(root, 'quiet-write.txt')
+    const before = Array.from({ length: 100 }, (_, index) => `old-${index}`).join('\n')
+    const after = Array.from({ length: 100 }, (_, index) => `new-${index}`).join('\n')
+    await writeFile(file, before, 'utf8')
+    await executeRead({ file_path: file })
+
+    const result = await executeWrite({ file_path: file, content: after })
+
+    expect(result.structuredContent).toBeUndefined()
+    const text = (result.content[0] as { text: string }).text
+    expect(text).toContain('updated successfully')
+    expect(text).not.toContain('old-0')
+    expect(text).not.toContain('new-0')
+  })
+
+  it('returns a one-line confirmation from Write when it creates the file', async () => {
+    const root = await project()
+    const file = path.join(root, 'quiet-write-create.txt')
+
+    const result = await executeWrite({ file_path: file, content: 'fresh body' })
+
+    expect(result.structuredContent).toBeUndefined()
+    const text = (result.content[0] as { text: string }).text
+    expect(text).toContain('created successfully')
+    expect(text).not.toContain('fresh body')
+  })
+
+  it('returns line-numbered text from Read without duplicating it in structuredContent', async () => {
+    const root = await project()
+    const file = path.join(root, 'numbered.txt')
+    await writeFile(file, 'alpha\nbeta\ngamma', 'utf8')
+
+    const result = await executeRead({ file_path: file })
+
+    expect(result.structuredContent).toBeUndefined()
+    expect(result.content[1]).toEqual({ type: 'text', text: '     1\talpha\n     2\tbeta\n     3\tgamma' })
+  })
+
+  it('keeps line numbers aligned to the offset for a partial Read', async () => {
+    const root = await project()
+    const file = path.join(root, 'numbered-offset.txt')
+    await writeFile(file, 'one\ntwo\nthree\nfour', 'utf8')
+
+    const result = await executeRead({ file_path: file, offset: 3, limit: 2 })
+
+    expect(result.structuredContent).toBeUndefined()
+    expect(result.content[1]).toEqual({ type: 'text', text: '     3\tthree\n     4\tfour' })
+  })
+
+  it('keeps the unchanged-file notice as plain text', async () => {
+    const root = await project()
+    const file = path.join(root, 'unchanged.txt')
+    await writeFile(file, 'stable', 'utf8')
+    await executeRead({ file_path: file })
+
+    const result = await executeRead({ file_path: file })
+
+    expect(result.structuredContent).toBeUndefined()
+    expect((result.content[0] as { text: string }).text).toContain('File unchanged since last read')
+  })
+})
+
+describe('line-ending transparency', () => {
+  it('reports the file line ending so the model never has to guess', async () => {
+    const root = await project('**/*.txt utf8\n')
+    const file = path.join(root, 'windows.txt')
+    await writeFile(file, 'a\r\nb\r\nc\r\n', 'utf8')
+
+    const result = await executeRead({ file_path: file })
+
+    expect((result.content[0] as { text: string }).text).toContain('CRLF')
+    expect((result.content[1] as { text: string }).text).not.toContain('\r')
+  })
+
+  it('reports LF for a Unix file', async () => {
+    const root = await project('**/*.txt utf8\n')
+    const file = path.join(root, 'unix.txt')
+    await writeFile(file, 'a\nb\n', 'utf8')
+
+    const result = await executeRead({ file_path: file })
+
+    expect((result.content[0] as { text: string }).text).toContain('LF line endings')
+    expect((result.content[0] as { text: string }).text).not.toContain('CRLF')
+  })
+
+  it('reports the line range and total so the model need not re-read for it', async () => {
+    const root = await project('**/*.txt utf8\n')
+    const file = path.join(root, 'range-info.txt')
+    await writeFile(file, 'a\nb\nc\nd\n', 'utf8')
+
+    const result = await executeRead({ file_path: file, offset: 2, limit: 2 })
+
+    expect((result.content[0] as { text: string }).text).toContain('lines 2-3 of 4')
+  })
+
+  it('does not present the final newline as an extra empty line', async () => {
+    const root = await project('**/*.txt utf8\n')
+    const file = path.join(root, 'trailing-newline.txt')
+    await writeFile(file, 'a\nb\nc\n', 'utf8')
+
+    const result = await executeRead({ file_path: file })
+
+    expect((result.content[0] as { text: string }).text).toContain('lines 1-3 of 3')
+    expect((result.content[1] as { text: string }).text).toBe('     1\ta\n     2\tb\n     3\tc')
+  })
+
+  it('accepts CRLF old_string against an LF-normalized file', async () => {
+    const root = await project('**/*.txt utf8\n')
+    const file = path.join(root, 'mixed-crlf.txt')
+    await writeFile(file, 'one\r\ntwo\r\nthree\r\n', 'utf8')
+    await executeRead({ file_path: file })
+
+    const result = await executeEdit({ file_path: file, old_string: 'one\r\ntwo', new_string: 'ONE\r\nTWO' })
+
+    expect((result.content[0] as { text: string }).text).toContain('updated successfully')
+    expect(await readFile(file, 'utf8')).toBe('ONE\r\nTWO\r\nthree\r\n')
+  })
+
+  it('edits an LF file when the model supplies CRLF line endings', async () => {
+    const root = await project('**/*.txt utf8\n')
+    const file = path.join(root, 'mixed-lf.txt')
+    await writeFile(file, 'alpha\nbeta\n', 'utf8')
+    await executeRead({ file_path: file })
+
+    await executeEdit({ file_path: file, old_string: 'alpha\nbeta', new_string: 'first\r\nsecond' })
+
+    expect(await readFile(file, 'utf8')).toBe('first\nsecond\n')
+  })
+
+  it('keeps the file CRLF when Write rewrites it', async () => {
+    const root = await project('**/*.txt utf8\n')
+    const file = path.join(root, 'crlf-rewrite.txt')
+    await writeFile(file, 'old\r\nbody\r\n', 'utf8')
+    await executeRead({ file_path: file })
+
+    await executeWrite({ file_path: file, content: 'new\r\nbody\r\n' })
+
+    expect(await readFile(file, 'utf8')).toBe('new\r\nbody\r\n')
+  })
+
+  it('keeps the file CRLF when the model sends LF to Write', async () => {
+    const root = await project('**/*.txt utf8\n')
+    const file = path.join(root, 'crlf-write-lf.txt')
+    await writeFile(file, 'old\r\nbody\r\n', 'utf8')
+    await executeRead({ file_path: file })
+
+    await executeWrite({ file_path: file, content: 'new\nbody\n' })
+
+    expect(await readFile(file, 'utf8')).toBe('new\r\nbody\r\n')
+  })
+
+  it('honours the requested line ending when Write creates a new file', async () => {
+    const root = await project('**/*.txt utf8\n')
+    const file = path.join(root, 'created-crlf.txt')
+
+    const result = await executeWrite({ file_path: file, content: 'a\r\nb\r\n' })
+
+    expect((result.content[0] as { text: string }).text).toContain('CRLF')
+    expect(await readFile(file, 'utf8')).toBe('a\r\nb\r\n')
+  })
+
+  it('honours the requested line ending when Edit creates a new file', async () => {
+    const root = await project('**/*.txt utf8\n')
+    const file = path.join(root, 'created-crlf-edit.txt')
+
+    const result = await executeEdit({ file_path: file, old_string: '', new_string: 'a\r\nb\r\n' })
+
+    expect((result.content[0] as { text: string }).text).toContain('CRLF')
+    expect(await readFile(file, 'utf8')).toBe('a\r\nb\r\n')
+  })
+
+  it('describes the line ending in the success message', async () => {
+    const root = await project('**/*.txt utf8\n')
+    const file = path.join(root, 'announced.txt')
+    await writeFile(file, 'old\r\nbody\r\n', 'utf8')
+    await executeRead({ file_path: file })
+
+    const result = await executeEdit({ file_path: file, old_string: 'old', new_string: 'new' })
+
+    expect((result.content[0] as { text: string }).text).toContain('CRLF')
   })
 })

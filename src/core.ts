@@ -86,6 +86,27 @@ export function encodeSnapshotText(snapshot: ReadSnapshot, text: string, preserv
   })
 }
 
+/**
+ * Names a file's line-ending style in the words a model reasons with. Tools
+ * report this on every result so the model never has to spend a round trip
+ * probing for CRLF versus LF.
+ */
+export function describeNewline(newline: ReadSnapshot['newline']): string {
+  if (newline === '\r\n') return 'CRLF'
+  if (newline === '\n') return 'LF'
+  if (newline === '\r') return 'CR'
+  return 'no line endings yet'
+}
+
+/**
+ * Removes carriage returns from model-supplied text so old_string and
+ * new_string match the newline-normalized text the Read tool displayed. The
+ * on-disk style is restored at encode time.
+ */
+export function normalizeNewlines(text: string): string {
+  return text.replaceAll('\r\n', '\n').replaceAll('\r', '\n')
+}
+
 interface ReadCoverage {
   hash: string
   mtimeMs: number

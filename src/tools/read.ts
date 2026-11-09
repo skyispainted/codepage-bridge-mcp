@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 
 import { maxTextFileBytes } from '../limits.js'
-import { getProjectFileContext, readDecodedFile, readRegistry } from '../core.js'
+import { getProjectFileContext, describeNewline, readDecodedFile, readRegistry } from '../core.js'
 import { inspectProjectPath } from '../filesystem/index.js'
 import { readImage, readPdf, parseNotebook, mapNotebook } from '../media/index.js'
 import type { McpContentBlock } from '../media/index.js'
@@ -75,7 +75,6 @@ export async function executeRead(input: ReadInput): Promise<ToolResponse> {
         type: 'text',
         text: 'File unchanged since last read. The content from the earlier Read tool_result in this conversation is still current — refer to that instead of re-reading.',
       }],
-      structuredContent: { type: 'file_unchanged', file: { filePath: context.absolutePath } },
     }
   }
 
@@ -113,7 +112,12 @@ export async function executeRead(input: ReadInput): Promise<ToolResponse> {
   }
 
   const snapshot = await readDecodedFile(context)
-  const lines = snapshot.text.split('\n')
+  // A trailing newline terminates the last line rather than starting an empty
+  // one, so it is not counted or displayed as an extra line.
+  const allLines = snapshot.text.split('\n')
+  const lines = allLines.length > 1 && allLines[allLines.length - 1] === ''
+    ? allLines.slice(0, -1)
+    : allLines
   const offset = input.offset === undefined || input.offset === 0 ? 1 : input.offset
   const startIndex = offset - 1
   const endIndex = input.limit === undefined ? lines.length : startIndex + input.limit
@@ -147,18 +151,12 @@ export async function executeRead(input: ReadInput): Promise<ToolResponse> {
   }
 
   const content = selected.join('\n')
+  const endLine = Math.min(offset + selected.length - 1, lines.length)
+  const header = `${context.absolutePath} (lines ${offset}-${endLine} of ${lines.length}, ${snapshot.encoding}, ${describeNewline(snapshot.newline)} line endings)`
   return {
-    content: [{ type: 'text', text: lineNumber(content, offset) }],
-    structuredContent: {
-      type: 'text',
-      file: {
-        filePath: context.absolutePath,
-        content,
-        numLines: selected.length,
-        startLine: offset,
-        totalLines: lines.length,
-        encoding: snapshot.encoding,
-      },
-    },
+    content: [
+      { type: 'text', text: header },
+      { type: 'text', text: lineNumber(content, offset) },
+    ],
   }
 }
